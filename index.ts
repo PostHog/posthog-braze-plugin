@@ -1,5 +1,5 @@
-import { Plugin, PluginMeta } from '@posthog/plugin-scaffold'
-import fetch, { RequestInit, Response } from 'node-fetch'
+import { Plugin, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
+import fetch, { RequestInit } from 'node-fetch'
 
 declare const posthog: {
     api: {
@@ -63,10 +63,13 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             const errors = responseJson['errors'] as string[]
             errors.forEach((error) => console.error(error))
         }
-        if (!statusOk(response)) {
-            return null
-        } else {
+        if (String(response.status)[0] === '2') {
             return responseJson
+        } else {
+            if (String(response.status)[0] === '5') {
+                throw new RetryError('Service is down, retry later')
+            }
+            return null
         }
     }
 }
@@ -746,10 +749,6 @@ async function posthogBatchCapture(batch: PosthogEvent[]) {
             batch,
         },
     })
-}
-
-function statusOk(res: Response) {
-    return String(res.status)[0] === '2'
 }
 
 export function ISODateString(d: Date): string {
