@@ -101,28 +101,28 @@ export async function runEveryDay(meta: BrazeMeta): Promise<void> {
     // job number
     
     if (meta.config.importCampaigns === 'Yes') {
-        meta.jobs.trackCampaigns({}).runNow()
+        await meta.jobs.trackCampaigns({}).runNow()
     }
     if (meta.config.importCanvases === 'Yes') {
-        meta.jobs.trackCanvases({}).runNow()
+        await meta.jobs.trackCanvases({}).runNow()
     }
     if (meta.config.importCustomEvents === 'Yes') {
-        meta.jobs.trackCustomEvents({}).runNow()
+        await meta.jobs.trackCustomEvents({}).runNow()
     }
     if (meta.config.importKPIs === 'Yes') {
-        meta.jobs.trackDailyNewUsers({}).runNow()
-        meta.jobs.trackDailyActiveUsers({}).runNow()
-        meta.jobs.trackMonthlyActiveUsers({}).runNow()
-        meta.jobs.trackDailyUninstalls({}).runNow()
+        await meta.jobs.trackDailyNewUsers({}).runNow()
+        await meta.jobs.trackDailyActiveUsers({}).runNow()
+        await meta.jobs.trackMonthlyActiveUsers({}).runNow()
+        await meta.jobs.trackDailyUninstalls({}).runNow()
     }
     if (meta.config.importFeeds === 'Yes') {
-        meta.jobs.trackFeeds({}).runNow()
+        await meta.jobs.trackFeeds({}).runNow()
     }
     if (meta.config.importSegments === 'Yes') {
-        meta.jobs.trackSegments({}).runNow()
+        await meta.jobs.trackSegments({}).runNow()
     }
     if (meta.config.importSessions === 'Yes') {
-        meta.jobs.trackSessions({}).runNow()
+        await meta.jobs.trackSessions({}).runNow()
     }
 }
 
@@ -211,19 +211,18 @@ export async function isBrazeObjectActive<T extends BrazeObject>(
         {},
         'GET'
     )) as BrazeObjectDetailsResponse | null
-    if (response) {
-        if (response.draft) {
-            return false
-        }
-        // we only parse objects which were active in the 24 hours before the last UTC midnight
-        const lastActive = response.last_entry || response.last_sent || response.end_at
-        if (lastActive) {
-            return getLastUTCMidnight().getTime() - new Date(lastActive).getTime() < ONE_DAY
-        }
-        return true
-    } else {
+    
+    // nit
+    if (!response || response.draft) {
         return false
+    } 
+
+    // we only parse objects which were active in the 24 hours before the last UTC midnight
+    const lastActive = response.last_entry || response.last_sent || response.end_at
+    if (lastActive) {
+        return getLastUTCMidnight().getTime() - new Date(lastActive).getTime() < ONE_DAY
     }
+    return true
 }
 
 interface DataSeriesResponse<T> {
@@ -253,9 +252,11 @@ async function trackCampaigns({}: Record<string, unknown>, meta: BrazeMeta): Pro
         getItems,
         meta.global.fetchBraze
     )
+    
     // for each campaign, we run the export asynchronously
-    campaigns.forEach((campaign) => {
-        meta.jobs.trackCampaign(campaign).runNow()
+    campaigns.forEach(async (campaign) => {
+        // this syntax might look weird, but we're not awaiting the job itself, just the confirmation that it was stored successfully
+        await meta.jobs.trackCampaign(campaign).runNow()
     })
 }
 
@@ -288,11 +289,9 @@ export function transformCampaignDataSeriesToPosthogEvents(
                         }
                     }
                 }
-            } else {
-                if (currentKey !== 'time') {
-                    //@ts-expect-error type error related to the MessageStats FIX ME above
-                    result[currentKey] = item[currentKey]
-                }
+            } else if (currentKey !== 'time') {
+                //@ts-expect-error type error related to the MessageStats FIX ME above
+                result[currentKey] = item[currentKey]
             }
             return result
         }, {})
@@ -328,8 +327,8 @@ async function trackCanvases({}: Record<string, unknown>, meta: BrazeMeta): Prom
         getItems,
         meta.global.fetchBraze
     )
-    canvases.forEach((canvas) => {
-        meta.jobs.trackCanvas(canvas).runNow()
+    canvases.forEach(async (canvas) => {
+        await meta.jobs.trackCanvas(canvas).runNow()
     })
 }
 
@@ -346,6 +345,9 @@ export type CanvasDataSeries = {
 
 export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataSeries, name: string): PosthogEvent[] {
     const events: PosthogEvent[] = []
+    
+    // not reading too deeply at this stage to tell you how/if this can be refactored but this looks like a code smell
+    // way too much nesting and very hard to read/reason about
     for (const series of dataSeries.stats) {
         const properties = Object.keys(series).reduce((result: Record<string, string | number>, currentKey: string) => {
             switch (currentKey) {
@@ -369,6 +371,7 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
                         const step = series.step_stats[stepKey]
                         Object.keys(step).forEach((key) => {
                             if (key !== 'name') {
+                                // for example, here we can actually do a if key === messages else if key !== name and remove one level of nesting
                                 if (key === 'messages') {
                                     for (const messageKey of Object.keys(step.messages)) {
                                         const currentMessages = (step.messages as MessageStats)[messageKey]
@@ -624,8 +627,8 @@ async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise
         getItems,
         meta.global.fetchBraze
     )
-    feeds.forEach((feed) => {
-        meta.jobs.trackFeed(feed).runNow()
+    feeds.forEach(async (feed) => {
+        await meta.jobs.trackFeed(feed).runNow()
     })
 }
 
