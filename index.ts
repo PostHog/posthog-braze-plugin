@@ -94,6 +94,12 @@ export const jobs = {
 
 // the jobs are run once every day, and the different imports are run as separate async jobs
 export async function runEveryDay(meta: BrazeMeta): Promise<void> {
+    // this is something plugin devs aren't expected to know, but while we're at it, might be best to trigger these
+    // such that they don't all run at the same time. Also, do they all need to be separate?
+    // Imagine 1000 people on Cloud use this plugin. When 12PM hits we'll trigger 10*1000 = 10000 jobs to be run immediately. 
+    // We should be able to handle these of course, but would lighten up the load if we did like runIn(n*5, 'seconds') where n is the 
+    // job number
+    
     if (meta.config.importCampaigns === 'Yes') {
         meta.jobs.trackCampaigns({}).runNow()
     }
