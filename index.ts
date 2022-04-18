@@ -81,10 +81,7 @@ export const jobs = {
     trackCanvas,
     trackCustomEvents,
     trackCustomEvent,
-    trackDailyNewUsers,
-    trackDailyActiveUsers,
-    trackMonthlyActiveUsers,
-    trackDailyUninstalls,
+    trackKPIs,
     trackFeeds,
     trackFeed,
     trackSegments,
@@ -95,28 +92,25 @@ export const jobs = {
 // the jobs are run once every day, and the different imports are run as separate async jobs
 export async function runEveryDay(meta: BrazeMeta): Promise<void> {
     if (meta.config.importCampaigns === 'Yes') {
-        meta.jobs.trackCampaigns({}).runNow()
+        await meta.jobs.trackCampaigns({}).runNow()
     }
     if (meta.config.importCanvases === 'Yes') {
-        meta.jobs.trackCanvases({}).runNow()
+        await meta.jobs.trackCanvases({}).runNow()
     }
     if (meta.config.importCustomEvents === 'Yes') {
-        meta.jobs.trackCustomEvents({}).runNow()
+        await meta.jobs.trackCustomEvents({}).runNow()
     }
     if (meta.config.importKPIs === 'Yes') {
-        meta.jobs.trackDailyNewUsers({}).runNow()
-        meta.jobs.trackDailyActiveUsers({}).runNow()
-        meta.jobs.trackMonthlyActiveUsers({}).runNow()
-        meta.jobs.trackDailyUninstalls({}).runNow()
+        await meta.jobs.trackKPIs({}).runNow()
     }
     if (meta.config.importFeeds === 'Yes') {
-        meta.jobs.trackFeeds({}).runNow()
+        await meta.jobs.trackFeeds({}).runNow()
     }
     if (meta.config.importSegments === 'Yes') {
-        meta.jobs.trackSegments({}).runNow()
+        await meta.jobs.trackSegments({}).runNow()
     }
     if (meta.config.importSessions === 'Yes') {
-        meta.jobs.trackSessions({}).runNow()
+        await meta.jobs.trackSessions({}).runNow()
     }
 }
 
@@ -205,19 +199,15 @@ export async function isBrazeObjectActive<T extends BrazeObject>(
         {},
         'GET'
     )) as BrazeObjectDetailsResponse | null
-    if (response) {
-        if (response.draft) {
-            return false
-        }
-        // we only parse objects which were active in the 24 hours before the last UTC midnight
-        const lastActive = response.last_entry || response.last_sent || response.end_at
-        if (lastActive) {
-            return getLastUTCMidnight().getTime() - new Date(lastActive).getTime() < ONE_DAY
-        }
-        return true
-    } else {
+    if (!response || response.draft) {
         return false
     }
+    // we only parse objects which were active in the 24 hours before the last UTC midnight
+    const lastActive = response.last_entry || response.last_sent || response.end_at
+    if (lastActive) {
+        return getLastUTCMidnight().getTime() - new Date(lastActive).getTime() < ONE_DAY
+    }
+    return true
 }
 
 interface DataSeriesResponse<T> {
@@ -248,8 +238,8 @@ async function trackCampaigns({}: Record<string, unknown>, meta: BrazeMeta): Pro
         meta.global.fetchBraze
     )
     // for each campaign, we run the export asynchronously
-    campaigns.forEach((campaign) => {
-        meta.jobs.trackCampaign(campaign).runNow()
+    campaigns.forEach(async (campaign) => {
+        await meta.jobs.trackCampaign(campaign).runNow()
     })
 }
 
@@ -322,8 +312,8 @@ async function trackCanvases({}: Record<string, unknown>, meta: BrazeMeta): Prom
         getItems,
         meta.global.fetchBraze
     )
-    canvases.forEach((canvas) => {
-        meta.jobs.trackCanvas(canvas).runNow()
+    canvases.forEach(async (canvas) => {
+        await meta.jobs.trackCanvas(canvas).runNow()
     })
 }
 
@@ -338,53 +328,49 @@ export type CanvasDataSeries = {
     }[]
 }
 
+const mapAndPrependKeys = (object: Record<string, string | number>, prependKey: string, skipKeys: string[] = []) => {
+    const result: Record<string, string | number> = {}
+    Object.keys(object).forEach((key) => {
+        if (!skipKeys.includes(key)) {
+            result[`${prependKey}${key}`] = object[key]
+        }
+    })
+    return result;
+}
+
 export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataSeries, name: string): PosthogEvent[] {
     const events: PosthogEvent[] = []
     for (const series of dataSeries.stats) {
         const properties = Object.keys(series).reduce((result: Record<string, string | number>, currentKey: string) => {
             switch (currentKey) {
                 case 'total_stats':
-                    Object.keys(series.total_stats).forEach((key) => {
-                        result[`total_stats:${key}`] = series.total_stats[key]
-                    })
+                    // we remap the keys in the result by prepending `total_stats:`
+                    result = { ...result, ...mapAndPrependKeys(series.total_stats, 'total_stats:')}
                     break
                 case 'variant_stats':
+                    // for each variant, we remap the keys in the result by prepending `variant_stats:` and name of the variant
                     for (const variantKey of Object.keys(series.variant_stats)) {
                         const variant = series.variant_stats[variantKey]
-                        Object.keys(variant).forEach((key) => {
-                            if (key !== 'name') {
-                                result[`variant_stats:${variant.name}:${key}`] = variant[key]
-                            }
-                        })
+                        result = { ...result, ...mapAndPrependKeys(variant, `variant_stats:${variant.name}:`, ['name'])}
                     }
                     break
                 case 'step_stats':
+                    // for each step and each variant, we remap the keys in the result by prepending `step_stats:`, the name of the variant, the name of the step
                     for (const stepKey of Object.keys(series.step_stats)) {
                         const step = series.step_stats[stepKey]
-                        Object.keys(step).forEach((key) => {
-                            if (key !== 'name') {
-                                if (key === 'messages') {
-                                    for (const messageKey of Object.keys(step.messages)) {
-                                        const currentMessages = (step.messages as MessageStats)[messageKey]
-                                        for (const variation of currentMessages) {
-                                            const variationName = variation['variation_name']
-                                            const variationKey = variationName
-                                                ? `${messageKey}:${variationName}`
-                                                : messageKey
-                                            for (const subKey of Object.keys(variation)) {
-                                                if (subKey !== 'variation_name') {
-                                                    result[`step_stats:${step.name}:${variationKey}:${subKey}`] =
-                                                        variation[subKey]
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    //@ts-expect-error type error related to the MessageStats FIX ME above
-                                    result[`step_stats:${step.name}:${key}`] = step[key]
-                                }
+                        for (const messageKey of Object.keys(step.messages)) {
+                            const currentMessages = (step.messages as MessageStats)[messageKey]
+                            // each step contains messages, each message contains multiple variations
+                            for (const variation of currentMessages) {
+                                const variationName = variation['variation_name']
+                                // if a variation_name is provided, we add it to the key
+                                const variationKey = variationName
+                                    ? `${messageKey}:${variationName}`
+                                    : messageKey
+                                result = { ...result, ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, ['variation_name'])}
                             }
-                        })
+                        }
+                        result = { ...result, ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, ['messages'])}
                     }
                     break
             }
@@ -433,8 +419,8 @@ async function trackCustomEvents({}: Record<string, unknown>, meta: BrazeMeta): 
         getEvents,
         meta.global.fetchBraze
     )
-    events.forEach((event) => {
-        meta.jobs.trackCustomEvent(event).runNow()
+    events.forEach(async (event) => {
+        await meta.jobs.trackCustomEvent(event).runNow()
     })
 }
 
@@ -498,7 +484,7 @@ export function transformNewUsersDataSeriesToPosthogEvents(series: NewUsersDataS
     return events
 }
 
-async function trackDailyNewUsers(_: unknown, meta: BrazeMeta): Promise<void> {
+async function trackDailyNewUsers(meta: BrazeMeta): Promise<void> {
     const query = 'length=1'
     const dataSeries = await getDataSeries<NewUsersDataSeries[]>(BrazeObject.new_users, query, meta.global.fetchBraze)
     if (!dataSeries) {
@@ -527,7 +513,7 @@ export function transformActiveUsersDataSeriesToPosthogEvents(series: ActiveUser
     return events
 }
 
-async function trackDailyActiveUsers(_: unknown, meta: BrazeMeta): Promise<void> {
+async function trackDailyActiveUsers(meta: BrazeMeta): Promise<void> {
     const query = 'length=1'
     const dataSeries = await getDataSeries<ActiveUsersDataSeries[]>(
         BrazeObject.active_users,
@@ -562,7 +548,7 @@ export function transformMonthlyActiveUsersDataSeriesToPosthogEvents(
     return events
 }
 
-async function trackMonthlyActiveUsers(_: unknown, meta: BrazeMeta): Promise<void> {
+async function trackMonthlyActiveUsers(meta: BrazeMeta): Promise<void> {
     const query = 'length=1'
     const dataSeries = await getDataSeries<MonthlyActiveUsersDataSeries[]>(
         BrazeObject.monthly_active_users,
@@ -595,7 +581,7 @@ export function transformDailyUninstallsDataSeriesToPosthogEvents(series: DailyU
     return events
 }
 
-async function trackDailyUninstalls(_: unknown, meta: BrazeMeta): Promise<void> {
+async function trackDailyUninstalls(meta: BrazeMeta): Promise<void> {
     const query = 'length=1'
     const dataSeries = await getDataSeries<DailyUninstallsDataSeries[]>(
         BrazeObject.uninstalls,
@@ -609,6 +595,13 @@ async function trackDailyUninstalls(_: unknown, meta: BrazeMeta): Promise<void> 
     await posthogBatchCapture(events)
 }
 
+async function trackKPIs(_: unknown, meta: BrazeMeta): Promise<void> {
+    await trackDailyNewUsers(meta);
+    await trackDailyActiveUsers(meta);
+    await trackMonthlyActiveUsers(meta);
+    await trackDailyUninstalls(meta);
+}
+
 /* NEWS FEED CARDS */
 
 async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
@@ -618,8 +611,8 @@ async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise
         getItems,
         meta.global.fetchBraze
     )
-    feeds.forEach((feed) => {
-        meta.jobs.trackFeed(feed).runNow()
+    feeds.forEach(async (feed) => {
+        await meta.jobs.trackFeed(feed).runNow()
     })
 }
 
@@ -671,8 +664,8 @@ async function trackSegments({}: Record<string, unknown>, meta: BrazeMeta): Prom
         getItems,
         meta.global.fetchBraze
     )
-    segments.forEach((segment) => {
-        meta.jobs.trackSegment(segment).runNow()
+    segments.forEach(async (segment) => {
+        await meta.jobs.trackSegment(segment).runNow()
     })
 }
 
