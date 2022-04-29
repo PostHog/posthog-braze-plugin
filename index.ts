@@ -238,9 +238,9 @@ async function trackCampaigns({}: Record<string, unknown>, meta: BrazeMeta): Pro
         meta.global.fetchBraze
     )
     // for each campaign, we run the export asynchronously
-    campaigns.forEach(async (campaign) => {
+    for (const campaign of campaigns) {
         await meta.jobs.trackCampaign(campaign).runNow()
-    })
+    }
 }
 
 type MessageStats = Record<string, Array<Record<string, string | number> & { variation_name?: string }>>
@@ -312,9 +312,9 @@ async function trackCanvases({}: Record<string, unknown>, meta: BrazeMeta): Prom
         getItems,
         meta.global.fetchBraze
     )
-    canvases.forEach(async (canvas) => {
+    for (const canvas of canvases) {
         await meta.jobs.trackCanvas(canvas).runNow()
-    })
+    }
 }
 
 // see Canvas Data Series object schema here: https://www.braze.com/docs/api/endpoints/export/canvas/get_canvas_analytics/
@@ -370,7 +370,7 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
                                 result = { ...result, ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, ['variation_name'])}
                             }
                         }
-                        result = { ...result, ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, ['messages'])}
+                        result = { ...result, ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, ['messages', 'name'])}
                     }
                     break
             }
@@ -419,9 +419,9 @@ async function trackCustomEvents({}: Record<string, unknown>, meta: BrazeMeta): 
         getEvents,
         meta.global.fetchBraze
     )
-    events.forEach(async (event) => {
+    for (const event of events) {
         await meta.jobs.trackCustomEvent(event).runNow()
-    })
+    }
 }
 
 type CustomEventDataSeries = {
@@ -611,9 +611,9 @@ async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise
         getItems,
         meta.global.fetchBraze
     )
-    feeds.forEach(async (feed) => {
+    for (const feed of feeds) {
         await meta.jobs.trackFeed(feed).runNow()
-    })
+    }
 }
 
 export type FeedDataSeries = {
@@ -664,9 +664,9 @@ async function trackSegments({}: Record<string, unknown>, meta: BrazeMeta): Prom
         getItems,
         meta.global.fetchBraze
     )
-    segments.forEach(async (segment) => {
+    for (const segment of segments) {
         await meta.jobs.trackSegment(segment).runNow()
-    })
+    }
 }
 
 export type SegmentDataSeries = {
