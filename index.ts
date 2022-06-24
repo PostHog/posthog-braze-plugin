@@ -59,7 +59,7 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
         }
         const response = await fetch(`${brazeUrl}${endpoint}`, { method, headers, ...options })
         const responseJson = await response.json()
-        if (responseJson.get('errors')) {
+        if (responseJson['errors']) {
             const errors = responseJson['errors'] as string[]
             errors.forEach((error) => console.error(error))
         }
