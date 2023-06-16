@@ -1,4 +1,4 @@
-import { Plugin, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
+import { Plugin, PluginEvent, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit } from 'node-fetch'
 
 declare const posthog: {
@@ -32,6 +32,7 @@ type BrazePlugin = Plugin<{
         importKPIs: string
         importSegments: string
         importSessions: string
+        exportEvents: string
     }
 }>
 
@@ -57,7 +58,13 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
         }
-        const response = await fetch(`${brazeUrl}${endpoint}`, { method, headers, ...options })
+        // Timeout after 5 seconds
+        const response = await fetch(`${brazeUrl}${endpoint}`, {
+            method,
+            headers,
+            ...options,
+            timeout: 5000,
+        })
         const responseJson = await response.json()
         if (responseJson['errors']) {
             const errors = responseJson['errors'] as string[]
@@ -230,7 +237,7 @@ async function getDataSeries<T>(
 
 /* CAMPAIGNS */
 
-async function trackCampaigns({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCampaigns({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const campaigns = await paginateItems(
         BrazeObject.campaigns,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.campaigns,
@@ -305,7 +312,7 @@ async function trackCampaign(item: Item, meta: BrazeMeta): Promise<void> {
 
 /* CANVAS */
 
-async function trackCanvases({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCanvases({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const canvases = await paginateItems(
         BrazeObject.campaigns,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.canvas,
@@ -335,7 +342,7 @@ const mapAndPrependKeys = (object: Record<string, string | number>, prependKey: 
             result[`${prependKey}${key}`] = object[key]
         }
     })
-    return result;
+    return result
 }
 
 export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataSeries, name: string): PosthogEvent[] {
@@ -345,13 +352,16 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
             switch (currentKey) {
                 case 'total_stats':
                     // we remap the keys in the result by prepending `total_stats:`
-                    result = { ...result, ...mapAndPrependKeys(series.total_stats, 'total_stats:')}
+                    result = { ...result, ...mapAndPrependKeys(series.total_stats, 'total_stats:') }
                     break
                 case 'variant_stats':
                     // for each variant, we remap the keys in the result by prepending `variant_stats:` and name of the variant
                     for (const variantKey of Object.keys(series.variant_stats)) {
                         const variant = series.variant_stats[variantKey]
-                        result = { ...result, ...mapAndPrependKeys(variant, `variant_stats:${variant.name}:`, ['name'])}
+                        result = {
+                            ...result,
+                            ...mapAndPrependKeys(variant, `variant_stats:${variant.name}:`, ['name']),
+                        }
                     }
                     break
                 case 'step_stats':
@@ -364,13 +374,22 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
                             for (const variation of currentMessages) {
                                 const variationName = variation['variation_name']
                                 // if a variation_name is provided, we add it to the key
-                                const variationKey = variationName
-                                    ? `${messageKey}:${variationName}`
-                                    : messageKey
-                                result = { ...result, ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, ['variation_name'])}
+                                const variationKey = variationName ? `${messageKey}:${variationName}` : messageKey
+                                result = {
+                                    ...result,
+                                    ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, [
+                                        'variation_name',
+                                    ]),
+                                }
                             }
                         }
-                        result = { ...result, ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, ['messages', 'name'])}
+                        result = {
+                            ...result,
+                            ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, [
+                                'messages',
+                                'name',
+                            ]),
+                        }
                     }
                     break
             }
@@ -412,7 +431,7 @@ async function getEvents(_: unknown, page: number, fetchBraze: FetchBraze): Prom
     }
 }
 
-async function trackCustomEvents({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCustomEvents({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const events = await paginateItems(
         BrazeObject.events,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.events,
@@ -596,15 +615,15 @@ async function trackDailyUninstalls(meta: BrazeMeta): Promise<void> {
 }
 
 async function trackKPIs(_: unknown, meta: BrazeMeta): Promise<void> {
-    await trackDailyNewUsers(meta);
-    await trackDailyActiveUsers(meta);
-    await trackMonthlyActiveUsers(meta);
-    await trackDailyUninstalls(meta);
+    await trackDailyNewUsers(meta)
+    await trackDailyActiveUsers(meta)
+    await trackMonthlyActiveUsers(meta)
+    await trackDailyUninstalls(meta)
 }
 
 /* NEWS FEED CARDS */
 
-async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackFeeds({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const feeds = await paginateItems(
         BrazeObject.feed,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.feed,
@@ -657,7 +676,7 @@ async function trackFeed(item: Item, meta: BrazeMeta): Promise<void> {
 
 /* SEGMENTS */
 
-async function trackSegments({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackSegments({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const segments = await paginateItems(
         BrazeObject.segments,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.segments,
@@ -769,4 +788,132 @@ export function ISODateString(d: Date): string {
 function getLastUTCMidnight() {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+}
+
+export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+    // This App supports pushing events to Braze also, via the `onEvent` hook. It
+    // should send any $set attributes to Braze `/users/track` endpoint in the
+    // `attributes` param as well as events in the `events` property.
+    //
+    // For an $identify event with $set properties the PostHog PluginEvent json
+    // looks like:
+    //
+    // {
+    //   "event": "$identify",
+    //   "distinct_id": "test@braze.com",
+    //   "timestamp": "2021-01-01T00:00:00.000Z",
+    //   "properties": {
+    //     "$set": {
+    //        "email": "test@braze.com",
+    //        "string_attribute": "fruit",
+    //        "boolean_attribute_1": true,
+    //        "integer_attribute": 25,
+    //        "array_attribute": [
+    //            "banana",
+    //            "apple"
+    //        ]
+    //     },
+    //     "release": {
+    //         "studio": "FilmStudio",
+    //         "year": "2022"
+    //     },
+    //     "cast": [
+    //         {
+    //             "name": "Actor1"
+    //         },
+    //         {
+    //             "name": "Actor2"
+    //         }
+    //     ]
+    //   }
+    // }
+    //
+    // The Braze `/users/track` endpoint expects a json payload like:
+    //
+    // {
+    //   "attributes": [
+    //       {
+    //           "email": "test@braze.com",
+    //           "string_attribute": "fruit",
+    //           "boolean_attribute_1": true,
+    //           "integer_attribute": 25,
+    //           "array_attribute": [
+    //               "banana",
+    //               "apple"
+    //           ]
+    //       }
+    //   ],
+    //   "events": [
+    //     {
+    //         "email": "test@braze.com",
+    //         "app_id": "your_app_identifier",
+    //         "name": "rented_movie",
+    //         "time": "2022-12-06T19:20:45+01:00",
+    //         "properties": {
+    //             "release": {
+    //                 "studio": "FilmStudio",
+    //                 "year": "2022"
+    //             },
+    //             "cast": [
+    //                 {
+    //                     "name": "Actor1"
+    //                 },
+    //                 {
+    //                     "name": "Actor2"
+    //                 }
+    //             ]
+    //         }
+    //      }
+    //   ]
+    // }
+    //
+    // To enable this functionality, the user must configure the plugin with the
+    // config.exportEvents and config.exportUserAttributes config options.
+    // exportEvents is a comma separated list of event names to export to Braze.
+    //
+    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
+    // for more info.
+
+    if (!meta.config.exportEvents) {
+        return
+    }
+
+    const { event, $set, properties, timestamp } = pluginEvent
+
+    // If we have $set or properties.$set then attributes should be an array
+    // of one object. Otherwise it should be an empty array.
+    const attributes =
+        meta.config.exportUserAttributes && ($set || properties?.$set)
+            ? [
+                {
+                    ...($set ?? properties?.$set ?? {}),
+                },
+            ]
+            : []
+
+    // If we have an event name in the exportEvents config option then we
+    // should export the event to Braze.
+    const events = meta.config.exportEvents?.split(',').includes(event)
+        ? [
+            {
+                ...properties,
+                external_id: pluginEvent.distinct_id,
+                name: event,
+                time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),
+            },
+        ]
+        : []
+
+    if (attributes.length || events.length) {
+        await meta.global.fetchBraze(
+            '/users/track',
+            {
+                body: JSON.stringify({
+                    attributes,
+                    events,
+                }),
+            },
+            'POST'
+        )
+    }
 }
