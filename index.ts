@@ -792,85 +792,34 @@ function getLastUTCMidnight() {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
 }
 
+type BrazeUserAlias = { alias_name: string; alias_label: string }
+
+type BrazeAttribute = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    _update_existing_only?: boolean
+    push_token_import?: boolean
+} & Record<string, unknown>
+
+// NOTE: Reference: https://www.braze.com/docs/api/objects_filters/event_object/
+type BrazeEvent = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    app_id?: string
+    name: string
+    time: string // ISO 8601 timestamp
+    properties?: Record<string, unknown>
+    _update_existing_only?: boolean
+}
+
 export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
     // This App supports pushing events to Braze also, via the `onEvent` hook. It
     // should send any $set attributes to Braze `/users/track` endpoint in the
     // `attributes` param as well as events in the `events` property.
-    //
-    // For an $identify event with $set properties the PostHog PluginEvent json
-    // looks like:
-    //
-    // {
-    //   "event": "$identify",
-    //   "distinct_id": "test@braze.com",
-    //   "timestamp": "2021-01-01T00:00:00.000Z",
-    //   "properties": {
-    //     "$set": {
-    //        "email": "test@braze.com",
-    //        "string_attribute": "fruit",
-    //        "boolean_attribute_1": true,
-    //        "integer_attribute": 25,
-    //        "array_attribute": [
-    //            "banana",
-    //            "apple"
-    //        ]
-    //     },
-    //     "release": {
-    //         "studio": "FilmStudio",
-    //         "year": "2022"
-    //     },
-    //     "cast": [
-    //         {
-    //             "name": "Actor1"
-    //         },
-    //         {
-    //             "name": "Actor2"
-    //         }
-    //     ]
-    //   }
-    // }
-    //
-    // The Braze `/users/track` endpoint expects a json payload like:
-    //
-    // {
-    //   "attributes": [
-    //       {
-    //           "email": "test@braze.com",
-    //           "string_attribute": "fruit",
-    //           "boolean_attribute_1": true,
-    //           "integer_attribute": 25,
-    //           "array_attribute": [
-    //               "banana",
-    //               "apple"
-    //           ]
-    //       }
-    //   ],
-    //   "events": [
-    //     {
-    //         "email": "test@braze.com",
-    //         "app_id": "your_app_identifier",
-    //         "name": "rented_movie",
-    //         "time": "2022-12-06T19:20:45+01:00",
-    //         "properties": {
-    //             "release": {
-    //                 "studio": "FilmStudio",
-    //                 "year": "2022"
-    //             },
-    //             "cast": [
-    //                 {
-    //                     "name": "Actor1"
-    //                 },
-    //                 {
-    //                     "name": "Actor2"
-    //                 }
-    //             ]
-    //         }
-    //      }
-    //   ]
-    // }
-    //
     // To enable this functionality, the user must configure the plugin with the
-    // config.exportEvents and config.userPropertiesToExport config options.
+    // config.eventsToExport and config.userPropertiesToExport config options.
     // exportEvents is a comma separated list of event names to export to Braze.
     //
     // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
@@ -893,7 +842,7 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
         return filtered
     }, {} as Properties)
 
-    const attributes =
+    const attributes: Array<BrazeAttribute> =
         (meta.config.eventsToExport?.split(',').includes(event) || event === '$identify') &&
         Object.keys(filteredProperties).length
             ? [{ ...filteredProperties, external_id: pluginEvent.distinct_id }]
@@ -903,7 +852,7 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     // should export the event to Braze.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { $set: _set, ...eventProperties } = properties ?? {}
-    const events = meta.config.eventsToExport?.split(',').includes(event)
+    const events: Array<BrazeEvent> = meta.config.eventsToExport?.split(',').includes(event)
         ? [
               {
                   properties: eventProperties,
