@@ -1,4 +1,4 @@
-import { Plugin, PluginEvent, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
+import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit } from 'node-fetch'
 
 declare const posthog: {
@@ -32,11 +32,13 @@ type BrazePlugin = Plugin<{
         importKPIs: string
         importSegments: string
         importSessions: string
-        exportEvents: string
+        eventsToExport: string
+        userPropertiesToExport: string
     }
 }>
 
-type BrazeMeta = PluginMeta<BrazePlugin>
+// NOTE: type is exported for tests
+export type BrazeMeta = PluginMeta<BrazePlugin>
 
 interface PosthogEvent {
     event: string
@@ -868,13 +870,13 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     // }
     //
     // To enable this functionality, the user must configure the plugin with the
-    // config.exportEvents and config.exportUserAttributes config options.
+    // config.exportEvents and config.userPropertiesToExport config options.
     // exportEvents is a comma separated list of event names to export to Braze.
     //
     // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
     // for more info.
 
-    if (!meta.config.exportEvents) {
+    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
         return
     }
 
@@ -882,21 +884,29 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
 
     // If we have $set or properties.$set then attributes should be an array
     // of one object. Otherwise it should be an empty array.
+    const userProperties: Properties = $set ?? properties?.$set ?? {}
+    const propertiesToExport = meta.config.userPropertiesToExport?.split(',') ?? []
+    const filteredProperties = Object.keys(userProperties).reduce((filtered, key) => {
+        if (propertiesToExport.includes(key)) {
+            filtered[key] = userProperties[key]
+        }
+        return filtered
+    }, {} as Properties)
+
     const attributes =
-        meta.config.exportEvents?.split(',').includes(event) && ($set || properties?.$set)
-            ? [
-                  {
-                      ...($set ?? properties?.$set ?? {}),
-                  },
-              ]
+        (meta.config.eventsToExport?.split(',').includes(event) || event === '$identify') &&
+        Object.keys(filteredProperties).length
+            ? [{ ...filteredProperties, external_id: pluginEvent.distinct_id }]
             : []
 
     // If we have an event name in the exportEvents config option then we
     // should export the event to Braze.
-    const events = meta.config.exportEvents?.split(',').includes(event)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { $set: _set, ...eventProperties } = properties ?? {}
+    const events = meta.config.eventsToExport?.split(',').includes(event)
         ? [
               {
-                  ...properties,
+                  properties: eventProperties,
                   external_id: pluginEvent.distinct_id,
                   name: event,
                   time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),

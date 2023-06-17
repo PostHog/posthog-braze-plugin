@@ -2,7 +2,7 @@
     "name": "posthog-braze-plugin",
     "private": false,
     "version": "0.0.1",
-    "description": "Import analytics from Braze.",
+    "description": "Import analytics from Braze to PostHog and export events from PostHog to Braze.",
     "author": "Emanuele Capparelli (k@emkpp.com)",
     "license": "MIT",
     "dependencies": {
@@ -43,7 +43,7 @@
     },
     "husky": {
         "hooks": {
-            "pre-commit": "lint-staged && tsc --noEmit"
+            "pre-commit": "lint-staged && tsc --noEmit --skipLibCheck"
         }
     },
     "lint-staged": {
