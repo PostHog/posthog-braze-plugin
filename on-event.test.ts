@@ -86,6 +86,7 @@ test('onEvent sends $set attributes and events to Braze', async () => {
     await onEvent(
         {
             event: '$identify',
+            timestamp: '2023-06-16T00:00:00.00Z',
             properties: {
                 $set: {
                     email: 'test@posthog',

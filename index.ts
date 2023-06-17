@@ -237,7 +237,7 @@ async function getDataSeries<T>(
 
 /* CAMPAIGNS */
 
-async function trackCampaigns({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCampaigns({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const campaigns = await paginateItems(
         BrazeObject.campaigns,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.campaigns,
@@ -312,7 +312,7 @@ async function trackCampaign(item: Item, meta: BrazeMeta): Promise<void> {
 
 /* CANVAS */
 
-async function trackCanvases({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCanvases({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const canvases = await paginateItems(
         BrazeObject.campaigns,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.canvas,
@@ -431,7 +431,7 @@ async function getEvents(_: unknown, page: number, fetchBraze: FetchBraze): Prom
     }
 }
 
-async function trackCustomEvents({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackCustomEvents({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const events = await paginateItems(
         BrazeObject.events,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.events,
@@ -623,7 +623,7 @@ async function trackKPIs(_: unknown, meta: BrazeMeta): Promise<void> {
 
 /* NEWS FEED CARDS */
 
-async function trackFeeds({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackFeeds({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const feeds = await paginateItems(
         BrazeObject.feed,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.feed,
@@ -676,7 +676,7 @@ async function trackFeed(item: Item, meta: BrazeMeta): Promise<void> {
 
 /* SEGMENTS */
 
-async function trackSegments({ }: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
+async function trackSegments({}: Record<string, unknown>, meta: BrazeMeta): Promise<void> {
     const segments = await paginateItems(
         BrazeObject.segments,
         BRAZE_PAGINATION_BY_OBJECT_TYPE.segments,
@@ -883,25 +883,25 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     // If we have $set or properties.$set then attributes should be an array
     // of one object. Otherwise it should be an empty array.
     const attributes =
-        meta.config.exportUserAttributes && ($set || properties?.$set)
+        meta.config.exportEvents?.split(',').includes(event) && ($set || properties?.$set)
             ? [
-                {
-                    ...($set ?? properties?.$set ?? {}),
-                },
-            ]
+                  {
+                      ...($set ?? properties?.$set ?? {}),
+                  },
+              ]
             : []
 
     // If we have an event name in the exportEvents config option then we
     // should export the event to Braze.
     const events = meta.config.exportEvents?.split(',').includes(event)
         ? [
-            {
-                ...properties,
-                external_id: pluginEvent.distinct_id,
-                name: event,
-                time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),
-            },
-        ]
+              {
+                  ...properties,
+                  external_id: pluginEvent.distinct_id,
+                  name: event,
+                  time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),
+              },
+          ]
         : []
 
     if (attributes.length || events.length) {
