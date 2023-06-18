@@ -87,10 +87,17 @@
             "choices": ["Yes", "No"]
         },
         {
-            "key": "exportEvents",
+            "key": "eventsToExport",
             "hint": "A comma separated list of events you want to export to Braze. Leave empty to export no events.",
-            "name": "Export Events",
+            "name": "Events to Export",
             "type": "string",
+            "default": "",
+            "required": false
+        },
+        {
+            "key": "userPropertiesToExport",
+            "hint": "A comma separated list of user properties you want to export to Braze. Leave empty to export no user properties.",
+            "name": "User Properties to Export",
             "default": "",
             "required": false
         }

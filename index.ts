@@ -1,4 +1,4 @@
-import { Plugin, PluginEvent, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
+import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit } from 'node-fetch'
 
 declare const posthog: {
@@ -32,11 +32,13 @@ type BrazePlugin = Plugin<{
         importKPIs: string
         importSegments: string
         importSessions: string
-        exportEvents: string
+        eventsToExport: string
+        userPropertiesToExport: string
     }
 }>
 
-type BrazeMeta = PluginMeta<BrazePlugin>
+// NOTE: type is exported for tests
+export type BrazeMeta = PluginMeta<BrazePlugin>
 
 interface PosthogEvent {
     event: string
@@ -790,91 +792,40 @@ function getLastUTCMidnight() {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
 }
 
+type BrazeUserAlias = { alias_name: string; alias_label: string }
+
+type BrazeAttribute = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    _update_existing_only?: boolean
+    push_token_import?: boolean
+} & Record<string, unknown>
+
+// NOTE: Reference: https://www.braze.com/docs/api/objects_filters/event_object/
+type BrazeEvent = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    app_id?: string
+    name: string
+    time: string // ISO 8601 timestamp
+    properties?: Record<string, unknown>
+    _update_existing_only?: boolean
+}
+
 export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
     // This App supports pushing events to Braze also, via the `onEvent` hook. It
     // should send any $set attributes to Braze `/users/track` endpoint in the
     // `attributes` param as well as events in the `events` property.
-    //
-    // For an $identify event with $set properties the PostHog PluginEvent json
-    // looks like:
-    //
-    // {
-    //   "event": "$identify",
-    //   "distinct_id": "test@braze.com",
-    //   "timestamp": "2021-01-01T00:00:00.000Z",
-    //   "properties": {
-    //     "$set": {
-    //        "email": "test@braze.com",
-    //        "string_attribute": "fruit",
-    //        "boolean_attribute_1": true,
-    //        "integer_attribute": 25,
-    //        "array_attribute": [
-    //            "banana",
-    //            "apple"
-    //        ]
-    //     },
-    //     "release": {
-    //         "studio": "FilmStudio",
-    //         "year": "2022"
-    //     },
-    //     "cast": [
-    //         {
-    //             "name": "Actor1"
-    //         },
-    //         {
-    //             "name": "Actor2"
-    //         }
-    //     ]
-    //   }
-    // }
-    //
-    // The Braze `/users/track` endpoint expects a json payload like:
-    //
-    // {
-    //   "attributes": [
-    //       {
-    //           "email": "test@braze.com",
-    //           "string_attribute": "fruit",
-    //           "boolean_attribute_1": true,
-    //           "integer_attribute": 25,
-    //           "array_attribute": [
-    //               "banana",
-    //               "apple"
-    //           ]
-    //       }
-    //   ],
-    //   "events": [
-    //     {
-    //         "email": "test@braze.com",
-    //         "app_id": "your_app_identifier",
-    //         "name": "rented_movie",
-    //         "time": "2022-12-06T19:20:45+01:00",
-    //         "properties": {
-    //             "release": {
-    //                 "studio": "FilmStudio",
-    //                 "year": "2022"
-    //             },
-    //             "cast": [
-    //                 {
-    //                     "name": "Actor1"
-    //                 },
-    //                 {
-    //                     "name": "Actor2"
-    //                 }
-    //             ]
-    //         }
-    //      }
-    //   ]
-    // }
-    //
     // To enable this functionality, the user must configure the plugin with the
-    // config.exportEvents and config.exportUserAttributes config options.
+    // config.eventsToExport and config.userPropertiesToExport config options.
     // exportEvents is a comma separated list of event names to export to Braze.
     //
     // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
     // for more info.
 
-    if (!meta.config.exportEvents) {
+    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
         return
     }
 
@@ -882,21 +833,29 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
 
     // If we have $set or properties.$set then attributes should be an array
     // of one object. Otherwise it should be an empty array.
-    const attributes =
-        meta.config.exportEvents?.split(',').includes(event) && ($set || properties?.$set)
-            ? [
-                  {
-                      ...($set ?? properties?.$set ?? {}),
-                  },
-              ]
+    const userProperties: Properties = $set ?? properties?.$set ?? {}
+    const propertiesToExport = meta.config.userPropertiesToExport?.split(',') ?? []
+    const filteredProperties = Object.keys(userProperties).reduce((filtered, key) => {
+        if (propertiesToExport.includes(key)) {
+            filtered[key] = userProperties[key]
+        }
+        return filtered
+    }, {} as Properties)
+
+    const attributes: Array<BrazeAttribute> =
+        (meta.config.eventsToExport?.split(',').includes(event) || event === '$identify') &&
+        Object.keys(filteredProperties).length
+            ? [{ ...filteredProperties, external_id: pluginEvent.distinct_id }]
             : []
 
     // If we have an event name in the exportEvents config option then we
     // should export the event to Braze.
-    const events = meta.config.exportEvents?.split(',').includes(event)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { $set: _set, ...eventProperties } = properties ?? {}
+    const events: Array<BrazeEvent> = meta.config.eventsToExport?.split(',').includes(event)
         ? [
               {
-                  ...properties,
+                  properties: eventProperties,
                   external_id: pluginEvent.distinct_id,
                   name: event,
                   time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),
