@@ -6,4 +6,10 @@ module.exports = {
         '^.+\\.(js|jsx)$': 'babel-jest',
     },
     transformIgnorePatterns: [],
+    globals: {
+        'ts-jest': {
+            // Without isolatedModules, tests run realy slow, so we enable them
+            isolatedModules: true,
+        },
+    },
 }

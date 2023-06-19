@@ -1,4 +1,4 @@
-import { Plugin, PluginMeta, RetryError } from '@posthog/plugin-scaffold'
+import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit } from 'node-fetch'
 
 declare const posthog: {
@@ -32,10 +32,13 @@ type BrazePlugin = Plugin<{
         importKPIs: string
         importSegments: string
         importSessions: string
+        eventsToExport: string
+        userPropertiesToExport: string
     }
 }>
 
-type BrazeMeta = PluginMeta<BrazePlugin>
+// NOTE: type is exported for tests
+export type BrazeMeta = PluginMeta<BrazePlugin>
 
 interface PosthogEvent {
     event: string
@@ -57,7 +60,13 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
         }
-        const response = await fetch(`${brazeUrl}${endpoint}`, { method, headers, ...options })
+        // Timeout after 5 seconds
+        const response = await fetch(`${brazeUrl}${endpoint}`, {
+            method,
+            headers,
+            ...options,
+            timeout: 5000,
+        })
         const responseJson = await response.json()
         if (responseJson['errors']) {
             const errors = responseJson['errors'] as string[]
@@ -335,7 +344,7 @@ const mapAndPrependKeys = (object: Record<string, string | number>, prependKey: 
             result[`${prependKey}${key}`] = object[key]
         }
     })
-    return result;
+    return result
 }
 
 export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataSeries, name: string): PosthogEvent[] {
@@ -345,13 +354,16 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
             switch (currentKey) {
                 case 'total_stats':
                     // we remap the keys in the result by prepending `total_stats:`
-                    result = { ...result, ...mapAndPrependKeys(series.total_stats, 'total_stats:')}
+                    result = { ...result, ...mapAndPrependKeys(series.total_stats, 'total_stats:') }
                     break
                 case 'variant_stats':
                     // for each variant, we remap the keys in the result by prepending `variant_stats:` and name of the variant
                     for (const variantKey of Object.keys(series.variant_stats)) {
                         const variant = series.variant_stats[variantKey]
-                        result = { ...result, ...mapAndPrependKeys(variant, `variant_stats:${variant.name}:`, ['name'])}
+                        result = {
+                            ...result,
+                            ...mapAndPrependKeys(variant, `variant_stats:${variant.name}:`, ['name']),
+                        }
                     }
                     break
                 case 'step_stats':
@@ -364,13 +376,22 @@ export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataS
                             for (const variation of currentMessages) {
                                 const variationName = variation['variation_name']
                                 // if a variation_name is provided, we add it to the key
-                                const variationKey = variationName
-                                    ? `${messageKey}:${variationName}`
-                                    : messageKey
-                                result = { ...result, ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, ['variation_name'])}
+                                const variationKey = variationName ? `${messageKey}:${variationName}` : messageKey
+                                result = {
+                                    ...result,
+                                    ...mapAndPrependKeys(variation, `step_stats:${step.name}:${variationKey}:`, [
+                                        'variation_name',
+                                    ]),
+                                }
                             }
                         }
-                        result = { ...result, ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, ['messages', 'name'])}
+                        result = {
+                            ...result,
+                            ...mapAndPrependKeys(step as Record<string, string | number>, `step_stats:${step.name}:`, [
+                                'messages',
+                                'name',
+                            ]),
+                        }
                     }
                     break
             }
@@ -596,10 +617,10 @@ async function trackDailyUninstalls(meta: BrazeMeta): Promise<void> {
 }
 
 async function trackKPIs(_: unknown, meta: BrazeMeta): Promise<void> {
-    await trackDailyNewUsers(meta);
-    await trackDailyActiveUsers(meta);
-    await trackMonthlyActiveUsers(meta);
-    await trackDailyUninstalls(meta);
+    await trackDailyNewUsers(meta)
+    await trackDailyActiveUsers(meta)
+    await trackMonthlyActiveUsers(meta)
+    await trackDailyUninstalls(meta)
 }
 
 /* NEWS FEED CARDS */
@@ -769,4 +790,89 @@ export function ISODateString(d: Date): string {
 function getLastUTCMidnight() {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+}
+
+type BrazeUserAlias = { alias_name: string; alias_label: string }
+
+type BrazeAttribute = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    _update_existing_only?: boolean
+    push_token_import?: boolean
+} & Record<string, unknown>
+
+// NOTE: Reference: https://www.braze.com/docs/api/objects_filters/event_object/
+type BrazeEvent = {
+    external_id?: string
+    user_alias?: BrazeUserAlias
+    braze_id?: string
+    app_id?: string
+    name: string
+    time: string // ISO 8601 timestamp
+    properties?: Record<string, unknown>
+    _update_existing_only?: boolean
+}
+
+export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+    // This App supports pushing events to Braze also, via the `onEvent` hook. It
+    // should send any $set attributes to Braze `/users/track` endpoint in the
+    // `attributes` param as well as events in the `events` property.
+    // To enable this functionality, the user must configure the plugin with the
+    // config.eventsToExport and config.userPropertiesToExport config options.
+    // exportEvents is a comma separated list of event names to export to Braze.
+    //
+    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
+    // for more info.
+
+    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
+        return
+    }
+
+    const { event, $set, properties, timestamp } = pluginEvent
+
+    // If we have $set or properties.$set then attributes should be an array
+    // of one object. Otherwise it should be an empty array.
+    const userProperties: Properties = $set ?? properties?.$set ?? {}
+    const propertiesToExport = meta.config.userPropertiesToExport?.split(',') ?? []
+    const filteredProperties = Object.keys(userProperties).reduce((filtered, key) => {
+        if (propertiesToExport.includes(key)) {
+            filtered[key] = userProperties[key]
+        }
+        return filtered
+    }, {} as Properties)
+
+    const attributes: Array<BrazeAttribute> =
+        (meta.config.eventsToExport?.split(',').includes(event) || event === '$identify') &&
+        Object.keys(filteredProperties).length
+            ? [{ ...filteredProperties, external_id: pluginEvent.distinct_id }]
+            : []
+
+    // If we have an event name in the exportEvents config option then we
+    // should export the event to Braze.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { $set: _set, ...eventProperties } = properties ?? {}
+    const events: Array<BrazeEvent> = meta.config.eventsToExport?.split(',').includes(event)
+        ? [
+              {
+                  properties: eventProperties,
+                  external_id: pluginEvent.distinct_id,
+                  name: event,
+                  time: timestamp ? ISODateString(new Date(timestamp)) : ISODateString(getLastUTCMidnight()),
+              },
+          ]
+        : []
+
+    if (attributes.length || events.length) {
+        await meta.global.fetchBraze(
+            '/users/track',
+            {
+                body: JSON.stringify({
+                    attributes,
+                    events,
+                }),
+            },
+            'POST'
+        )
+    }
 }
