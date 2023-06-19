@@ -199,6 +199,7 @@ test('onEvent user properties are passed for $identify event even if $identify i
             brazeUrl: 'https://rest.iad-01.braze.com',
             eventsToExport: 'account created',
             userPropertiesToExport: 'email',
+            importUserAttributesInAllEvents: 'Yes',
         },
         global: {},
     } as BrazeMeta
@@ -233,4 +234,50 @@ test('onEvent user properties are passed for $identify event even if $identify i
         ],
         events: [],
     })
+})
+
+test('onEvent user properties are not passed for non-whitelisted events', async () => {
+    const mockService = jest.fn()
+
+    server.use(
+        rest.post('https://rest.iad-01.braze.com/users/track', (req, res, ctx) => {
+            const requestBody = req.body
+            mockService(requestBody)
+            return res(ctx.status(200), ctx.json({}))
+        })
+    )
+
+    // Create a meta object that we can pass into the setupPlugin and onEvent
+    const meta = {
+        config: {
+            brazeUrl: 'https://rest.iad-01.braze.com',
+            eventsToExport: 'account created',
+            userPropertiesToExport: 'email',
+            importUserAttributesInAllEvents: 'No',
+        },
+        global: {},
+    } as BrazeMeta
+
+    await setupPlugin(meta)
+    await onEvent(
+        {
+            event: '$identify',
+            timestamp: '2023-06-16T00:00:00.00Z',
+            properties: {
+                $set: {
+                    email: 'test@posthog',
+                    name: 'Test User',
+                },
+                is_a_demo_user: true,
+            },
+            distinct_id: 'test',
+            ip: '',
+            site_url: '',
+            team_id: 0,
+            now: new Date().toISOString(),
+        },
+        meta
+    )
+
+    expect(mockService).not.toHaveBeenCalled()
 })

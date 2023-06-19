@@ -34,6 +34,7 @@ type BrazePlugin = Plugin<{
         importSessions: string
         eventsToExport: string
         userPropertiesToExport: string
+        importUserAttributesInAllEvents: string
     }
 }>
 
@@ -842,9 +843,11 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
         return filtered
     }, {} as Properties)
 
+    const shouldImportAttributes =
+        meta.config.importUserAttributesInAllEvents === 'Yes' || meta.config.eventsToExport?.split(',').includes(event)
+
     const attributes: Array<BrazeAttribute> =
-        (meta.config.eventsToExport?.split(',').includes(event) || event === '$identify') &&
-        Object.keys(filteredProperties).length
+        shouldImportAttributes && Object.keys(filteredProperties).length
             ? [{ ...filteredProperties, external_id: pluginEvent.distinct_id }]
             : []
 
