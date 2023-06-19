@@ -1,11 +1,11 @@
 {
     "name": "Braze",
-    "url": "TODO",
-    "description": "Import analytics from Braze",
+    "url": "https://github.com/posthog/posthog-braze-plugin",
+    "description": "Import analytics from Braze and export PostHog events to Braze.",
     "main": "index.ts",
     "config": [
         {
-            "markdown": "Depending on what you want to import into Posthog, your API Key should have the following permissions: `campaigns.list`, `campaign.data_series`, `campaigns.details`, `canvas.list`, `canvas.data_series`, `canvas.details`, `events.list`, `events.data_series`, `kpi.mau.data_series`, `kpi.dau.data_series`, `kpi.new_users.data_series`, `kpi.uninstalls.data_series`, `feed.list`, `feed.data_series`, `feed.details`, `segments.list`, `segments.data_series`, `segments.details`, `sessions.data_series`"
+            "markdown": "Depending on what you want to import into PostHog, your API Key should have the following permissions: `campaigns.list`, `campaign.data_series`, `campaigns.details`, `canvas.list`, `canvas.data_series`, `canvas.details`, `events.list`, `events.data_series`, `kpi.mau.data_series`, `kpi.dau.data_series`, `kpi.new_users.data_series`, `kpi.uninstalls.data_series`, `feed.list`, `feed.data_series`, `feed.details`, `segments.list`, `segments.data_series`, `segments.details`, `sessions.data_series`"
         },
         {
             "key": "brazeUrl",
@@ -100,6 +100,14 @@
             "name": "User Properties to Export",
             "default": "",
             "required": false
+        },
+        {
+            "key": "importUserAttributesInAllEvents",
+            "hint": "Will look for whitelisted user attributes to send to Braze in all events as opposed to only whitelisted events.",
+            "name": "Import User Attributes on All Events",
+            "default": "No",
+            "required": true,
+            "choices": ["Yes", "No"]
         }
     ]
 }
