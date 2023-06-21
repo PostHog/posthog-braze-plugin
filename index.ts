@@ -915,7 +915,7 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     const startTime = Date.now()
 
     try {
-        _handleOnEvent(pluginEvent, meta)
+        await _handleOnEvent(pluginEvent, meta)
     } catch (e) {
         throw e
     } finally {
