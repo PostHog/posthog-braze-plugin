@@ -74,7 +74,6 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
 
         let response: Response | undefined
 
-        // TEMP: Debugging
         const startTime = Date.now()
 
         try {
@@ -88,8 +87,10 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             console.error(e)
             throw new RetryError('Fetch failed, retrying.')
         } finally {
-            // TEMP: Debugging
-            console.log(`Fetch took ${(Date.now() - startTime) / 1000} seconds.`)
+            const elapsedTime = (Date.now() - startTime) / 1000
+            if (elapsedTime >= 3) {
+                console.warn(`🐢 Slow request warning. Fetch took ${elapsedTime} seconds.`, endpoint, options.body)
+            }
         }
 
         if (String(response.status)[0] === '5') {
@@ -840,21 +841,7 @@ type BrazeEvent = {
     _update_existing_only?: boolean
 }
 
-export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
-    // This App supports pushing events to Braze also, via the `onEvent` hook. It
-    // should send any $set attributes to Braze `/users/track` endpoint in the
-    // `attributes` param as well as events in the `events` property.
-    // To enable this functionality, the user must configure the plugin with the
-    // config.eventsToExport and config.userPropertiesToExport config options.
-    // exportEvents is a comma separated list of event names to export to Braze.
-    //
-    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
-    // for more info.
-
-    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
-        return
-    }
-
+const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
     const { event, $set, properties, timestamp } = pluginEvent
 
     // If we have $set or properties.$set then attributes should be an array
@@ -906,6 +893,35 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
         if (response?.message !== 'success') {
             console.error(`Braze API error response: `, response)
             throw new RetryError('Braze API error onEvent, retrying.')
+        }
+    }
+}
+
+export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+    // This App supports pushing events to Braze also, via the `onEvent` hook. It
+    // should send any $set attributes to Braze `/users/track` endpoint in the
+    // `attributes` param as well as events in the `events` property.
+    // To enable this functionality, the user must configure the plugin with the
+    // config.eventsToExport and config.userPropertiesToExport config options.
+    // exportEvents is a comma separated list of event names to export to Braze.
+    //
+    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
+    // for more info.
+
+    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
+        return
+    }
+
+    const startTime = Date.now()
+
+    try {
+        _handleOnEvent(pluginEvent, meta)
+    } catch (e) {
+        throw e
+    } finally {
+        const elapsedTime = (Date.now() - startTime) / 1000
+        if (elapsedTime >= 4) {
+            console.warn(`🐢🐢 Slow onEvent warning. Fetch took ${elapsedTime} seconds.`)
         }
     }
 }
