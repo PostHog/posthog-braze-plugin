@@ -85,7 +85,7 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
                 timeout: 5000,
             })
         } catch (e) {
-            console.error(e)
+            console.error(e, endpoint, options.body, eventUuid)
             throw new RetryError('Fetch failed, retrying.')
         } finally {
             const elapsedTime = (Date.now() - startTime) / 1000
