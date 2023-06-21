@@ -4,7 +4,6 @@ on:
     pull_request:
     push:
         branches: [main]
-    
 
 jobs:
     build:
@@ -18,5 +17,7 @@ jobs:
                   node-version: '16'
             - name: Install dependencies
               run: yarn install
+            - name: Typecheck
+              run: yarn typecheck
             - name: Run tests
               run: yarn test
