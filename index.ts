@@ -15,7 +15,8 @@ declare const posthog: {
 export type FetchBraze = (
     endpoint: string,
     options: Partial<RequestInit>,
-    method: string
+    method: string,
+    eventUuid?: string
 ) => Promise<Record<string, unknown> | null>
 
 type BooleanChoice = 'Yes' | 'No'
@@ -65,7 +66,7 @@ const ENDPOINTS_MAP = {
 export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> {
     const brazeUrl = ENDPOINTS_MAP[config.brazeEndpoint]
     // we define a global fetch function that handles authentication and API errors
-    global.fetchBraze = async (endpoint: string, options = {}, method = 'GET') => {
+    global.fetchBraze = async (endpoint, options = {}, method = 'GET', eventUuid = '') => {
         const headers = {
             Accept: 'application/json',
             'Content-Type': 'application/json',
@@ -89,12 +90,16 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
         } finally {
             const elapsedTime = (Date.now() - startTime) / 1000
             if (elapsedTime >= 3) {
-                console.warn(`🐢 Slow request warning. Fetch took ${elapsedTime} seconds.`, endpoint, options.body)
+                console.warn(
+                    `🐢 Slow request warning. Fetch took ${elapsedTime} seconds. Event ID: ${eventUuid}`,
+                    endpoint,
+                    options.body
+                )
             }
         }
 
         if (String(response.status)[0] === '5') {
-            throw new RetryError('Service is down, retry later')
+            throw new RetryError(`Service is down, retry later. Event ID: ${eventUuid}`)
         }
 
         if (String(response.status)[0] !== '2') {
@@ -887,12 +892,13 @@ const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
                     events,
                 }),
             },
-            'POST'
+            'POST',
+            pluginEvent.uuid
         )
 
         if (response?.message !== 'success') {
-            console.error(`Braze API error response: `, response)
-            throw new RetryError('Braze API error onEvent, retrying.')
+            console.error(`Braze API error (${pluginEvent.uuid}) response: `, response)
+            throw new RetryError(`Braze API error onEvent, retrying. Event ID: ${pluginEvent.uuid}`)
         }
     }
 }
@@ -921,7 +927,7 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     } finally {
         const elapsedTime = (Date.now() - startTime) / 1000
         if (elapsedTime >= 4) {
-            console.warn(`🐢🐢 Slow onEvent warning. Fetch took ${elapsedTime} seconds.`)
+            console.warn(`🐢🐢 Slow onEvent warning. Fetch took ${elapsedTime} seconds. Event ID: ${pluginEvent.uuid}`)
         }
     }
 }
