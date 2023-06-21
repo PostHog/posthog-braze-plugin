@@ -6,17 +6,17 @@ import {
     isBrazeObjectActive,
     ISODateString,
     paginateItems,
-    transformActiveUsersDataSeriesToPosthogEvents,
-    transformCampaignDataSeriesToPosthogEvents,
-    transformCanvasDataSeriesToPosthogEvents,
-    transformCustomEventDataSeriesToPosthogEvents,
-    transformDailyUninstallsDataSeriesToPosthogEvents,
-    transformFeedDataSeriesToPosthogEvents,
-    transformMonthlyActiveUsersDataSeriesToPosthogEvents,
-    transformNewUsersDataSeriesToPosthogEvents,
-    transformSegmentDataSeriesToPosthogEvents,
-    transformSessionsDataSeriesToPosthogEvents,
-} from './index'
+    transformActiveUsersDataSeriesToPostHogEvents,
+    transformCampaignDataSeriesToPostHogEvents,
+    transformCanvasDataSeriesToPostHogEvents,
+    transformCustomEventDataSeriesToPostHogEvents,
+    transformDailyUninstallsDataSeriesToPostHogEvents,
+    transformFeedDataSeriesToPostHogEvents,
+    transformMonthlyActiveUsersDataSeriesToPostHogEvents,
+    transformNewUsersDataSeriesToPostHogEvents,
+    transformSegmentDataSeriesToPostHogEvents,
+    transformSessionsDataSeriesToPostHogEvents,
+} from '../index'
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const dummyFetch: (x: Record<string, unknown>) => FetchBraze = (x) => (_a, _b, _c) => Promise.resolve(x)
@@ -115,7 +115,7 @@ test('isBrazeObjectActive', async () => {
     ).toEqual(false)
 })
 
-test('transformCampaignDataSeriesToPosthogEvents', () => {
+test('transformCampaignDataSeriesToPostHogEvents', () => {
     const series: CampaignDataSeries[] = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -218,7 +218,7 @@ test('transformCampaignDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformCampaignDataSeriesToPosthogEvents(series, 'campaign1')).toEqual([
+    expect(transformCampaignDataSeriesToPostHogEvents(series, 'campaign1')).toEqual([
         {
             event: 'Braze campaign: campaign1',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -296,7 +296,7 @@ test('transformCampaignDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformCanvasDataSeriesToPosthogEvents', () => {
+test('transformCanvasDataSeriesToPostHogEvents', () => {
     const series: CanvasDataSeries = {
         name: 'canvas1',
         stats: [
@@ -339,7 +339,7 @@ test('transformCanvasDataSeriesToPosthogEvents', () => {
         ],
     }
 
-    expect(transformCanvasDataSeriesToPosthogEvents(series, 'canvas1')).toEqual([
+    expect(transformCanvasDataSeriesToPostHogEvents(series, 'canvas1')).toEqual([
         {
             event: 'Braze canvas: canvas1',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -364,7 +364,7 @@ test('transformCanvasDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformCustomEventDataSeriesToPosthogEvent', () => {
+test('transformCustomEventDataSeriesToPostHogEvent', () => {
     const event = 'event1'
     const series = [
         {
@@ -373,7 +373,7 @@ test('transformCustomEventDataSeriesToPosthogEvent', () => {
         },
     ]
 
-    expect(transformCustomEventDataSeriesToPosthogEvents(series, event)).toEqual([
+    expect(transformCustomEventDataSeriesToPostHogEvents(series, event)).toEqual([
         {
             event: 'Braze event: event1',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -384,7 +384,7 @@ test('transformCustomEventDataSeriesToPosthogEvent', () => {
     ])
 })
 
-test('transformNewUsersDataSeriesToPosthogEvents', () => {
+test('transformNewUsersDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -392,7 +392,7 @@ test('transformNewUsersDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformNewUsersDataSeriesToPosthogEvents(series)).toEqual([
+    expect(transformNewUsersDataSeriesToPostHogEvents(series)).toEqual([
         {
             event: 'Braze KPI: Daily New Users',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -403,7 +403,7 @@ test('transformNewUsersDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformActiveUsersDataSeriesToPosthogEvents', () => {
+test('transformActiveUsersDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -411,7 +411,7 @@ test('transformActiveUsersDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformActiveUsersDataSeriesToPosthogEvents(series)).toEqual([
+    expect(transformActiveUsersDataSeriesToPostHogEvents(series)).toEqual([
         {
             event: 'Braze KPI: Daily Active Users',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -422,7 +422,7 @@ test('transformActiveUsersDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
+test('transformMonthlyActiveUsersDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -430,7 +430,7 @@ test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformMonthlyActiveUsersDataSeriesToPosthogEvents(series)).toEqual([
+    expect(transformMonthlyActiveUsersDataSeriesToPostHogEvents(series)).toEqual([
         {
             event: 'Braze KPI: Monthly Active Users',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -441,7 +441,7 @@ test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
+test('transformMonthlyActiveUsersDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -449,7 +449,7 @@ test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformDailyUninstallsDataSeriesToPosthogEvents(series)).toEqual([
+    expect(transformDailyUninstallsDataSeriesToPostHogEvents(series)).toEqual([
         {
             event: 'Braze KPI: Daily Uninstalls',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -460,7 +460,7 @@ test('transformMonthlyActiveUsersDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformFeedDataSeriesToPosthogEvents', () => {
+test('transformFeedDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -471,7 +471,7 @@ test('transformFeedDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformFeedDataSeriesToPosthogEvents(series, 'feed1')).toEqual([
+    expect(transformFeedDataSeriesToPostHogEvents(series, 'feed1')).toEqual([
         {
             event: 'Braze News Feed Card: feed1',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -485,7 +485,7 @@ test('transformFeedDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformSegmentDataSeriesToPosthogEvents', () => {
+test('transformSegmentDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -493,7 +493,7 @@ test('transformSegmentDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformSegmentDataSeriesToPosthogEvents(series, 'segment1')).toEqual([
+    expect(transformSegmentDataSeriesToPostHogEvents(series, 'segment1')).toEqual([
         {
             event: 'Braze Segment: segment1',
             timestamp: '2022-03-28T09:13:40.359Z',
@@ -504,7 +504,7 @@ test('transformSegmentDataSeriesToPosthogEvents', () => {
     ])
 })
 
-test('transformSegmentDataSeriesToPosthogEvents', () => {
+test('transformSegmentDataSeriesToPostHogEvents', () => {
     const series = [
         {
             time: '2022-03-28T09:13:40.359Z',
@@ -512,7 +512,7 @@ test('transformSegmentDataSeriesToPosthogEvents', () => {
         },
     ]
 
-    expect(transformSessionsDataSeriesToPosthogEvents(series)).toEqual([
+    expect(transformSessionsDataSeriesToPostHogEvents(series)).toEqual([
         {
             event: 'Braze Sessions',
             timestamp: '2022-03-28T09:13:40.359Z',

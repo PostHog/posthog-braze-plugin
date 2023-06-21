@@ -17,7 +17,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "prepublishOnly": "yarn test",
-        "typecheck": "tsc"
+        "typecheck": "tsc --noEmit --skipLibCheck"
     },
     "devDependencies": {
         "@babel/preset-env": "^7.16.11",

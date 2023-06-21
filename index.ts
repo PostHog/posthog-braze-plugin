@@ -1,5 +1,5 @@
 import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
-import fetch, { RequestInit } from 'node-fetch'
+import fetch, { RequestInit, Response } from 'node-fetch'
 
 declare const posthog: {
     api: {
@@ -43,10 +43,8 @@ type BrazePlugin = Plugin<{
 // NOTE: type is exported for tests
 export type BrazeMeta = PluginMeta<BrazePlugin>
 
-interface PosthogEvent {
-    event: string
-    properties: Record<string, string | number>
-    timestamp: string
+interface PostHogEvent extends Partial<PluginEvent> {
+    event: PluginEvent['event']
 }
 
 const ONE_HOUR = 1000 * 60 * 60
@@ -73,26 +71,35 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             'Content-Type': 'application/json',
             Authorization: `Bearer ${config.apiKey}`,
         }
-        // Timeout after 5 seconds
-        const response = await fetch(`${brazeUrl}${endpoint}`, {
-            method,
-            headers,
-            ...options,
-            timeout: 5000,
-        })
+
+        let response: Response | undefined
+
+        try {
+            response = await fetch(`${brazeUrl}${endpoint}`, {
+                method,
+                headers,
+                ...options,
+                timeout: 5000,
+            })
+        } catch (e) {
+            console.error(e)
+            throw new RetryError('Fetch failed, retrying.')
+        }
+
+        if (String(response.status)[0] === '5') {
+            throw new RetryError('Service is down, retry later')
+        }
+
+        if (String(response.status)[0] !== '2') {
+            return null
+        }
+
         const responseJson = await response.json()
         if (responseJson['errors']) {
             const errors = responseJson['errors'] as string[]
             errors.forEach((error) => console.error(error))
         }
-        if (String(response.status)[0] === '2') {
-            return responseJson
-        } else {
-            if (String(response.status)[0] === '5') {
-                throw new RetryError('Service is down, retry later')
-            }
-            return null
-        }
+        return responseJson
     }
 }
 
@@ -274,11 +281,11 @@ export type CampaignDataSeries = Record<string, string | number | MessageStats> 
     messages: MessageStats
 }
 
-export function transformCampaignDataSeriesToPosthogEvents(
+export function transformCampaignDataSeriesToPostHogEvents(
     dataSeries: CampaignDataSeries[],
     name: string
-): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of dataSeries) {
         const properties = Object.keys(item).reduce((result: Record<string, string | number>, currentKey: string) => {
             if (currentKey === 'messages') {
@@ -321,7 +328,7 @@ async function trackCampaign(item: Item, meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformCampaignDataSeriesToPosthogEvents(dataSeries, item.name)
+    const events = transformCampaignDataSeriesToPostHogEvents(dataSeries, item.name)
     await posthogBatchCapture(events)
 }
 
@@ -360,8 +367,8 @@ const mapAndPrependKeys = (object: Record<string, string | number>, prependKey: 
     return result
 }
 
-export function transformCanvasDataSeriesToPosthogEvents(dataSeries: CanvasDataSeries, name: string): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformCanvasDataSeriesToPostHogEvents(dataSeries: CanvasDataSeries, name: string): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const series of dataSeries.stats) {
         const properties = Object.keys(series).reduce((result: Record<string, string | number>, currentKey: string) => {
             switch (currentKey) {
@@ -429,7 +436,7 @@ async function trackCanvas(item: Item, meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformCanvasDataSeriesToPosthogEvents(dataSeries, item.name)
+    const events = transformCanvasDataSeriesToPostHogEvents(dataSeries, item.name)
     await posthogBatchCapture(events)
 }
 
@@ -463,11 +470,11 @@ type CustomEventDataSeries = {
     count: number
 }
 
-export function transformCustomEventDataSeriesToPosthogEvents(
+export function transformCustomEventDataSeriesToPostHogEvents(
     series: CustomEventDataSeries[],
     event: string
-): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: `Braze event: ${event}`,
@@ -493,7 +500,7 @@ async function trackCustomEvent(
     if (!dataSeries) {
         return
     }
-    const events = transformCustomEventDataSeriesToPosthogEvents(dataSeries, event)
+    const events = transformCustomEventDataSeriesToPostHogEvents(dataSeries, event)
     await posthogBatchCapture(events)
 }
 
@@ -504,8 +511,8 @@ type NewUsersDataSeries = {
     new_users: number
 }
 
-export function transformNewUsersDataSeriesToPosthogEvents(series: NewUsersDataSeries[]): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformNewUsersDataSeriesToPostHogEvents(series: NewUsersDataSeries[]): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: 'Braze KPI: Daily New Users',
@@ -524,7 +531,7 @@ async function trackDailyNewUsers(meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformNewUsersDataSeriesToPosthogEvents(dataSeries)
+    const events = transformNewUsersDataSeriesToPostHogEvents(dataSeries)
     await posthogBatchCapture(events)
 }
 
@@ -533,8 +540,8 @@ type ActiveUsersDataSeries = {
     dau: number
 }
 
-export function transformActiveUsersDataSeriesToPosthogEvents(series: ActiveUsersDataSeries[]): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformActiveUsersDataSeriesToPostHogEvents(series: ActiveUsersDataSeries[]): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: 'Braze KPI: Daily Active Users',
@@ -557,7 +564,7 @@ async function trackDailyActiveUsers(meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformActiveUsersDataSeriesToPosthogEvents(dataSeries)
+    const events = transformActiveUsersDataSeriesToPostHogEvents(dataSeries)
     await posthogBatchCapture(events)
 }
 
@@ -566,10 +573,10 @@ type MonthlyActiveUsersDataSeries = {
     mau: number
 }
 
-export function transformMonthlyActiveUsersDataSeriesToPosthogEvents(
+export function transformMonthlyActiveUsersDataSeriesToPostHogEvents(
     series: MonthlyActiveUsersDataSeries[]
-): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: 'Braze KPI: Monthly Active Users',
@@ -592,7 +599,7 @@ async function trackMonthlyActiveUsers(meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformMonthlyActiveUsersDataSeriesToPosthogEvents(dataSeries)
+    const events = transformMonthlyActiveUsersDataSeriesToPostHogEvents(dataSeries)
     await posthogBatchCapture(events)
 }
 
@@ -601,8 +608,8 @@ type DailyUninstallsDataSeries = {
     uninstalls: number
 }
 
-export function transformDailyUninstallsDataSeriesToPosthogEvents(series: DailyUninstallsDataSeries[]): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformDailyUninstallsDataSeriesToPostHogEvents(series: DailyUninstallsDataSeries[]): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: 'Braze KPI: Daily Uninstalls',
@@ -625,7 +632,7 @@ async function trackDailyUninstalls(meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformDailyUninstallsDataSeriesToPosthogEvents(dataSeries)
+    const events = transformDailyUninstallsDataSeriesToPostHogEvents(dataSeries)
     await posthogBatchCapture(events)
 }
 
@@ -658,8 +665,8 @@ export type FeedDataSeries = {
     unique_impressions: number
 }
 
-export function transformFeedDataSeriesToPosthogEvents(dataSeries: FeedDataSeries[], name: string): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformFeedDataSeriesToPostHogEvents(dataSeries: FeedDataSeries[], name: string): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of dataSeries) {
         events.push({
             event: `Braze News Feed Card: ${name}`,
@@ -685,7 +692,7 @@ async function trackFeed(item: Item, meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformFeedDataSeriesToPosthogEvents(dataSeries, item.name)
+    const events = transformFeedDataSeriesToPostHogEvents(dataSeries, item.name)
     await posthogBatchCapture(events)
 }
 
@@ -708,11 +715,11 @@ export type SegmentDataSeries = {
     size: number
 }
 
-export function transformSegmentDataSeriesToPosthogEvents(
+export function transformSegmentDataSeriesToPostHogEvents(
     dataSeries: SegmentDataSeries[],
     name: string
-): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of dataSeries) {
         events.push({
             event: `Braze Segment: ${name}`,
@@ -735,7 +742,7 @@ async function trackSegment(item: Item, meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformSegmentDataSeriesToPosthogEvents(dataSeries, item.name)
+    const events = transformSegmentDataSeriesToPostHogEvents(dataSeries, item.name)
     await posthogBatchCapture(events)
 }
 
@@ -746,8 +753,8 @@ type SessionsDataSeries = {
 
 /* SESSIONS */
 
-export function transformSessionsDataSeriesToPosthogEvents(series: SessionsDataSeries[]): PosthogEvent[] {
-    const events: PosthogEvent[] = []
+export function transformSessionsDataSeriesToPostHogEvents(series: SessionsDataSeries[]): PostHogEvent[] {
+    const events: PostHogEvent[] = []
     for (const item of series) {
         events.push({
             event: 'Braze Sessions',
@@ -766,11 +773,11 @@ async function trackSessions(_: unknown, meta: BrazeMeta): Promise<void> {
     if (!dataSeries) {
         return
     }
-    const events = transformSessionsDataSeriesToPosthogEvents(dataSeries)
+    const events = transformSessionsDataSeriesToPostHogEvents(dataSeries)
     await posthogBatchCapture(events)
 }
 
-async function posthogBatchCapture(batch: PosthogEvent[]) {
+async function posthogBatchCapture(batch: PostHogEvent[]) {
     await posthog.api.post('/capture/', {
         data: {
             batch,
@@ -878,9 +885,8 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
           ]
         : []
 
-    const tries = 0
     if (attributes.length || events.length) {
-        await meta.global.fetchBraze(
+        const response = await meta.global.fetchBraze(
             '/users/track',
             {
                 body: JSON.stringify({
@@ -890,5 +896,10 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
             },
             'POST'
         )
+
+        if (response?.message !== 'success') {
+            console.error(`Braze API error response: `, response)
+            throw new RetryError('Braze API error onEvent, retrying.')
+        }
     }
 }
