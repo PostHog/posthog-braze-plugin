@@ -92,7 +92,7 @@
             "key": "eventsToExport",
             "hint": "A comma separated list of events you want to export to Braze. Leave empty to export no events.",
             "name": "Events to Export",
-            "type": "choice",
+            "type": "string",
             "default": "",
             "required": false
         },

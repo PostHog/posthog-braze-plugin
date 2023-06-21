@@ -337,6 +337,7 @@ test('Braze API error', async () => {
             },
             meta
         )
+        throw new Error('Should not reach here')
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
@@ -345,12 +346,8 @@ test('Braze API error', async () => {
 })
 
 test('Braze offline error (500 response)', async () => {
-    const mockService = jest.fn()
-
     server.use(
-        rest.post('https://rest.iad-02.braze.com/users/track', (req, res, ctx) => {
-            const requestBody = req.body
-            mockService(requestBody)
+        rest.post('https://rest.iad-02.braze.com/users/track', (_, res, ctx) => {
             return res(ctx.status(500), ctx.json({}))
         })
     )
@@ -387,6 +384,7 @@ test('Braze offline error (500 response)', async () => {
             },
             meta
         )
+        throw new Error('Should not reach here')
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore

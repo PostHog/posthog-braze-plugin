@@ -74,6 +74,9 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
 
         let response: Response | undefined
 
+        // TEMP: Debugging
+        const startTime = Date.now()
+
         try {
             response = await fetch(`${brazeUrl}${endpoint}`, {
                 method,
@@ -84,6 +87,9 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
         } catch (e) {
             console.error(e)
             throw new RetryError('Fetch failed, retrying.')
+        } finally {
+            // TEMP: Debugging
+            console.log(`Fetch took ${(Date.now() - startTime) / 1000} seconds.`)
         }
 
         if (String(response.status)[0] === '5') {
