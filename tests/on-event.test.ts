@@ -1,4 +1,4 @@
-// This App supports pushing events to Braze also, via the `onEvent` hook. It
+// This App supports pushing events to Braze also, via the `processEvent` hook. It
 // should send any $set attributes to Braze `/users/track` endpoint in the
 // `attributes` param as well as events in the `events` property.
 //
@@ -54,7 +54,7 @@ import { RetryError } from '@posthog/plugin-scaffold'
 import { rest } from 'msw'
 import { setupServer } from 'msw/node'
 
-import { BrazeMeta, onEvent, setupPlugin } from '../index'
+import { BrazeMeta, processEvent, setupPlugin } from '../index'
 
 const server = setupServer()
 
@@ -62,7 +62,7 @@ beforeAll(() => server.listen())
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
-test('onEvent sends $set attributes and events to Braze', async () => {
+test('processEvent sends $set attributes and events to Braze', async () => {
     const mockService = jest.fn()
 
     server.use(
@@ -73,7 +73,7 @@ test('onEvent sends $set attributes and events to Braze', async () => {
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-03',
@@ -84,7 +84,7 @@ test('onEvent sends $set attributes and events to Braze', async () => {
     } as BrazeMeta
 
     await setupPlugin(meta)
-    await onEvent(
+    await processEvent(
         {
             event: 'account created',
             timestamp: '2023-06-16T00:00:00.00Z',
@@ -126,7 +126,7 @@ test('onEvent sends $set attributes and events to Braze', async () => {
     })
 })
 
-test('onEvent user properties not sent', async () => {
+test('processEvent user properties not sent', async () => {
     const mockService = jest.fn()
 
     server.use(
@@ -137,7 +137,7 @@ test('onEvent user properties not sent', async () => {
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-01',
@@ -147,7 +147,7 @@ test('onEvent user properties not sent', async () => {
     } as BrazeMeta
 
     await setupPlugin(meta)
-    await onEvent(
+    await processEvent(
         {
             event: 'account created',
             timestamp: '2023-06-16T00:00:00.00Z',
@@ -183,7 +183,7 @@ test('onEvent user properties not sent', async () => {
     })
 })
 
-test('onEvent user properties are passed for $identify event even if $identify is not reported', async () => {
+test('processEvent user properties are passed for $identify event even if $identify is not reported', async () => {
     const mockService = jest.fn()
 
     server.use(
@@ -194,7 +194,7 @@ test('onEvent user properties are passed for $identify event even if $identify i
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'EU-01',
@@ -206,7 +206,7 @@ test('onEvent user properties are passed for $identify event even if $identify i
     } as BrazeMeta
 
     await setupPlugin(meta)
-    await onEvent(
+    await processEvent(
         {
             event: '$identify',
             timestamp: '2023-06-16T00:00:00.00Z',
@@ -237,7 +237,7 @@ test('onEvent user properties are passed for $identify event even if $identify i
     })
 })
 
-test('onEvent user properties are not passed for non-whitelisted events', async () => {
+test('processEvent user properties are not passed for non-whitelisted events', async () => {
     const mockService = jest.fn()
 
     server.use(
@@ -248,7 +248,7 @@ test('onEvent user properties are not passed for non-whitelisted events', async 
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-01',
@@ -260,7 +260,7 @@ test('onEvent user properties are not passed for non-whitelisted events', async 
     } as BrazeMeta
 
     await setupPlugin(meta)
-    await onEvent(
+    await processEvent(
         {
             event: '$identify',
             timestamp: '2023-06-16T00:00:00.00Z',
@@ -305,7 +305,7 @@ test('Braze API error', async () => {
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-02',
@@ -318,7 +318,7 @@ test('Braze API error', async () => {
 
     await setupPlugin(meta)
     try {
-        await onEvent(
+        await processEvent(
             {
                 event: '$identify',
                 timestamp: '2023-06-16T00:00:00.00Z',
@@ -342,7 +342,7 @@ test('Braze API error', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Braze API error onEvent, retrying. Event ID: event_123')
+        expect(e.message).toEqual('Braze API error processEvent, retrying. Event ID: event_123')
     }
 })
 
@@ -353,7 +353,7 @@ test('Braze offline error (500 response)', async () => {
         })
     )
 
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-02',
@@ -366,7 +366,7 @@ test('Braze offline error (500 response)', async () => {
 
     await setupPlugin(meta)
     try {
-        await onEvent(
+        await processEvent(
             {
                 event: '$identify',
                 timestamp: '2023-06-16T00:00:00.00Z',

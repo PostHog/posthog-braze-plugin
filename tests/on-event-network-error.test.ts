@@ -1,7 +1,7 @@
 import { RetryError } from '@posthog/plugin-scaffold'
 import fetch from 'node-fetch'
 
-import { BrazeMeta, onEvent, setupPlugin } from '..'
+import { BrazeMeta, processEvent, setupPlugin } from '..'
 
 jest.mock('node-fetch')
 
@@ -10,7 +10,7 @@ test('Braze network error', async () => {
     fetch.mockImplementationOnce(() => {
         throw new Error('Network error')
     })
-    // Create a meta object that we can pass into the setupPlugin and onEvent
+    // Create a meta object that we can pass into the setupPlugin and processEvent
     const meta = {
         config: {
             brazeEndpoint: 'US-08',
@@ -24,7 +24,7 @@ test('Braze network error', async () => {
     await setupPlugin(meta)
 
     try {
-        await onEvent(
+        await processEvent(
             {
                 event: '$identify',
                 timestamp: '2023-06-16T00:00:00.00Z',

@@ -898,13 +898,13 @@ const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
 
         if (response?.message !== 'success') {
             console.error(`Braze API error (${pluginEvent.uuid}) response: `, response)
-            throw new RetryError(`Braze API error onEvent, retrying. Event ID: ${pluginEvent.uuid}`)
+            throw new RetryError(`Braze API error processEvent, retrying. Event ID: ${pluginEvent.uuid}`)
         }
     }
 }
 
-export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
-    // This App supports pushing events to Braze also, via the `onEvent` hook. It
+export const processEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+    // This App supports pushing events to Braze also, via the `processEvent` hook. It
     // should send any $set attributes to Braze `/users/track` endpoint in the
     // `attributes` param as well as events in the `events` property.
     // To enable this functionality, the user must configure the plugin with the
@@ -927,7 +927,9 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
     } finally {
         const elapsedTime = (Date.now() - startTime) / 1000
         if (elapsedTime >= 4) {
-            console.warn(`🐢🐢 Slow onEvent warning. Fetch took ${elapsedTime} seconds. Event ID: ${pluginEvent.uuid}`)
+            console.warn(
+                `🐢🐢 Slow processEvent warning. Fetch took ${elapsedTime} seconds. Event ID: ${pluginEvent.uuid}`
+            )
         }
     }
 }
