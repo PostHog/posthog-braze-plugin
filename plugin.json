@@ -8,8 +8,8 @@
             "markdown": "Depending on what you want to import into PostHog, your API Key should have the following permissions: `campaigns.list`, `campaign.data_series`, `campaigns.details`, `canvas.list`, `canvas.data_series`, `canvas.details`, `events.list`, `events.data_series`, `kpi.mau.data_series`, `kpi.dau.data_series`, `kpi.new_users.data_series`, `kpi.uninstalls.data_series`, `feed.list`, `feed.data_series`, `feed.details`, `segments.list`, `segments.data_series`, `segments.details`, `sessions.data_series`"
         },
         {
-            "key": "brazeUrl",
-            "hint": "The REST endpoint where your Braze instance is located, [see the docs here](https://www.braze.com/docs/api/basics)",
+            "key": "brazeEndpoint",
+            "hint": "The endpoint identifier where your Braze instance is located, only enter , [see the docs here](https://www.braze.com/docs/api/basics)",
             "name": "Braze REST Endpoint",
             "type": "string",
             "default": "",
@@ -21,13 +21,14 @@
             "name": "API Key",
             "type": "string",
             "default": "",
-            "required": true
+            "required": true,
+            "secret": true
         },
         {
             "key": "importCampaigns",
             "hint": "Do you want to import [Campaign](https://www.braze.com/docs/user_guide/engagement_tools/campaigns) analytics?",
             "name": "Import Campaigns",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -36,7 +37,7 @@
             "key": "importCanvases",
             "hint": "Do you want to import [Canvas](https://www.braze.com/docs/user_guide/engagement_tools/canvas) analytics?",
             "name": "Import Canvas",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -45,7 +46,7 @@
             "key": "importCustomEvents",
             "hint": "Do you want to import [Custom Events](https://www.braze.com/docs/user_guide/data_and_analytics/custom_data) analytics?",
             "name": "Import Custom Events",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -54,7 +55,7 @@
             "key": "importFeeds",
             "hint": "Do you want to import [News Feed](https://www.braze.com/docs/user_guide/engagement_tools/news_feed) analytics?",
             "name": "Import News Feed Cards",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -63,7 +64,7 @@
             "key": "importKPIs",
             "hint": "Do you want to import KPIs (Daily New Users, DAU, MAU, Daily Uninstalls)?",
             "name": "Import KPIs",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -72,7 +73,7 @@
             "key": "importSegments",
             "hint": "Do you want to import [Segment](https://www.braze.com/docs/user_guide/engagement_tools/segments) analytics?",
             "name": "Import Segments",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -81,7 +82,7 @@
             "key": "importSessions",
             "hint": "Do you want to import daily Sessions?",
             "name": "Import Sessions",
-            "type": "string",
+            "type": "choice",
             "default": "Yes",
             "required": true,
             "choices": ["Yes", "No"]
@@ -90,7 +91,7 @@
             "key": "eventsToExport",
             "hint": "A comma separated list of events you want to export to Braze. Leave empty to export no events.",
             "name": "Events to Export",
-            "type": "string",
+            "type": "choice",
             "default": "",
             "required": false
         },
@@ -98,6 +99,7 @@
             "key": "userPropertiesToExport",
             "hint": "A comma separated list of user properties you want to export to Braze. Leave empty to export no user properties.",
             "name": "User Properties to Export",
+            "type": "string",
             "default": "",
             "required": false
         },
@@ -105,6 +107,7 @@
             "key": "importUserAttributesInAllEvents",
             "hint": "Will look for whitelisted user attributes to send to Braze in all events as opposed to only whitelisted events.",
             "name": "Import User Attributes on All Events",
+            "type": "choice",
             "default": "No",
             "required": true,
             "choices": ["Yes", "No"]

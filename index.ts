@@ -18,23 +18,25 @@ export type FetchBraze = (
     method: string
 ) => Promise<Record<string, unknown> | null>
 
+type BooleanChoice = 'Yes' | 'No'
+
 type BrazePlugin = Plugin<{
     global: {
         fetchBraze: FetchBraze
     }
     config: {
-        brazeUrl: string
+        brazeEndpoint: 'US-01' | 'US-02' | 'US-03' | 'US-04' | 'US-05' | 'US-06' | 'US-08' | 'EU-01' | 'EU-02'
         apiKey: string
-        importCampaigns: string
-        importCanvases: string
-        importCustomEvents: string
-        importFeeds: string
-        importKPIs: string
-        importSegments: string
-        importSessions: string
+        importCampaigns: BooleanChoice
+        importCanvases: BooleanChoice
+        importCustomEvents: BooleanChoice
+        importFeeds: BooleanChoice
+        importKPIs: BooleanChoice
+        importSegments: BooleanChoice
+        importSessions: BooleanChoice
         eventsToExport: string
         userPropertiesToExport: string
-        importUserAttributesInAllEvents: string
+        importUserAttributesInAllEvents: BooleanChoice
     }
 }>
 
@@ -50,10 +52,20 @@ interface PosthogEvent {
 const ONE_HOUR = 1000 * 60 * 60
 const ONE_DAY = ONE_HOUR * 24
 
+const ENDPOINTS_MAP = {
+    'US-01': 'https://rest.iad-01.braze.com',
+    'US-02': 'https://rest.iad-02.braze.com',
+    'US-03': 'https://rest.iad-03.braze.com',
+    'US-04': 'https://rest.iad-04.braze.com',
+    'US-05': 'https://rest.iad-05.braze.com',
+    'US-06': 'https://rest.iad-06.braze.com',
+    'US-08': 'https://rest.iad-08.braze.com',
+    'EU-01': 'https://rest.fra-01.braze.eu',
+    'EU-02': 'https://rest.fra-02.braze.eu',
+}
+
 export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> {
-    const brazeUrl = config.brazeUrl.endsWith('/')
-        ? config.brazeUrl.substring(0, config.brazeUrl.length - 1)
-        : config.brazeUrl
+    const brazeUrl = ENDPOINTS_MAP[config.brazeEndpoint]
     // we define a global fetch function that handles authentication and API errors
     global.fetchBraze = async (endpoint: string, options = {}, method = 'GET') => {
         const headers = {
@@ -866,6 +878,7 @@ export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
           ]
         : []
 
+    const tries = 0
     if (attributes.length || events.length) {
         await meta.global.fetchBraze(
             '/users/track',
