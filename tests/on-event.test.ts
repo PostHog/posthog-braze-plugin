@@ -334,6 +334,7 @@ test('Braze API error', async () => {
                 site_url: '',
                 team_id: 0,
                 now: new Date().toISOString(),
+                uuid: 'event_123',
             },
             meta
         )
@@ -341,7 +342,7 @@ test('Braze API error', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Braze API error onEvent, retrying.')
+        expect(e.message).toEqual('Braze API error onEvent, retrying. Event ID: event_123')
     }
 })
 
@@ -381,6 +382,7 @@ test('Braze offline error (500 response)', async () => {
                 site_url: '',
                 team_id: 0,
                 now: new Date().toISOString(),
+                uuid: 'id_123',
             },
             meta
         )
@@ -388,6 +390,6 @@ test('Braze offline error (500 response)', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Service is down, retry later')
+        expect(e.message).toEqual('Service is down, retry later. Event ID: id_123')
     }
 })
