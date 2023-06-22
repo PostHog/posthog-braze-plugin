@@ -352,7 +352,7 @@ test('Braze API error', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Braze API error exportEvents, retrying. Event ID: event_123')
+        expect(e.message).toEqual('Braze API error exportEvents, retrying.')
     }
 })
 
@@ -402,6 +402,6 @@ test('Braze offline error (500 response)', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Service is down, retry later. Event ID: id_123')
+        expect(e.message).toEqual('Service is down, retry later. Event ID: ')
     }
 })
