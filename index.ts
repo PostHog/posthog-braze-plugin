@@ -846,7 +846,12 @@ type BrazeEvent = {
     _update_existing_only?: boolean
 }
 
-const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+type BrazeUsersTrackBody = {
+    attributes: BrazeAttribute[]
+    events: BrazeEvent[]
+}
+
+const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): BrazeUsersTrackBody => {
     const { event, $set, properties, timestamp } = pluginEvent
 
     // If we have $set or properties.$set then attributes should be an array
@@ -883,53 +888,64 @@ const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
           ]
         : []
 
-    if (attributes.length || events.length) {
-        const response = await meta.global.fetchBraze(
-            '/users/track',
-            {
-                body: JSON.stringify({
-                    attributes,
-                    events,
-                }),
-            },
-            'POST',
-            pluginEvent.uuid
-        )
-
-        if (response?.message !== 'success') {
-            console.error(`Braze API error (${pluginEvent.uuid}) response: `, response)
-            throw new RetryError(`Braze API error processEvent, retrying. Event ID: ${pluginEvent.uuid}`)
-        }
+    return {
+        attributes,
+        events,
     }
 }
 
-export const processEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
-    // This App supports pushing events to Braze also, via the `processEvent` hook. It
-    // should send any $set attributes to Braze `/users/track` endpoint in the
-    // `attributes` param as well as events in the `events` property.
-    // To enable this functionality, the user must configure the plugin with the
-    // config.eventsToExport and config.userPropertiesToExport config options.
-    // exportEvents is a comma separated list of event names to export to Braze.
-    //
-    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
-    // for more info.
+export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta): Promise<void> => {
+    // NOTE: batching events in 75 events per request
+    const batchSize = 75
+    const batches: PluginEvent[][] = []
 
-    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
-        return
+    for (let i = 0; i < pluginEvents.length; i += batchSize) {
+        batches.push(pluginEvents.slice(i, i + batchSize))
     }
+
+    if (batches.length === 0) {
+        throw new Error('No events to export')
+    }
+
+    const bodies = batches.map((batch) =>
+        batch.reduce(
+            (acc, pluginEvent) => {
+                const { attributes, events } = _generateBrazeRequestBody(pluginEvent, meta)
+
+                return {
+                    attributes: [...acc.attributes, ...attributes],
+                    events: [...acc.events, ...events],
+                }
+            },
+            {
+                attributes: [],
+                events: [],
+            } as BrazeUsersTrackBody
+        )
+    )
 
     const startTime = Date.now()
 
     try {
-        await _handleOnEvent(pluginEvent, meta)
+        const brazeRequests = bodies.map((body) =>
+            meta.global.fetchBraze(
+                '/users/track',
+                {
+                    body: JSON.stringify(body),
+                },
+                'POST'
+            )
+        )
+
+        await Promise.all(brazeRequests)
     } catch (e) {
-        throw e
+        console.error(e)
+        throw new Error('Error exporting events to Braze')
     } finally {
         const elapsedTime = (Date.now() - startTime) / 1000
+
         if (elapsedTime >= 4) {
-            console.warn(
-                `🐢🐢 Slow processEvent warning. Fetch took ${elapsedTime} seconds. Event ID: ${pluginEvent.uuid}`
-            )
+            console.warn(`🐢🐢 Slow exportEvents warning. Fetch took ${elapsedTime} seconds`)
         }
     }
 }
