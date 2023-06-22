@@ -1,6 +1,5 @@
 import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit, Response } from 'node-fetch'
-import { inspect } from 'util'
 
 declare const posthog: {
     api: {
@@ -895,16 +894,28 @@ const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): B
 }
 
 export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta): Promise<void> => {
+    if (!pluginEvents.length) {
+        console.warn('Received `exportEvents` with no events.')
+        return
+    }
+
+    const startTime = Date.now()
+    const oldestEventDelta = pluginEvents[0].timestamp
+        ? (Date.now() - new Date(pluginEvents[0].timestamp).getDate()) / 1000
+        : 'unknown'
+    console.log(
+        `Starting Braze plugin export. Processing ${pluginEvents.length} events. Oldest event happened ${oldestEventDelta} seconds ago.`
+    )
     const brazeRequestBodies = pluginEvents.map((pluginEvent) => _generateBrazeRequestBody(pluginEvent, meta))
 
     if (
         brazeRequestBodies.length === 0 ||
         brazeRequestBodies.every((body) => body.attributes.length === 0 && body.events.length === 0)
     ) {
-        return console.log('No events to export')
+        return console.log('No events to export.')
     }
 
-    const batchSize = 75 // NOTE: batching events in 75 events per request
+    const batchSize = 75 // NOTE: https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
     const batchedBodies = brazeRequestBodies.reduce((acc, curr) => {
         const { attributes, events } = curr
         const lastBatch = acc[acc.length - 1]
@@ -922,8 +933,6 @@ export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta)
 
         return acc
     }, [] as BrazeUsersTrackBody[])
-
-    const startTime = Date.now()
 
     try {
         const brazeRequests = batchedBodies.map((body) =>
