@@ -89,11 +89,10 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
             throw new RetryError('Fetch failed, retrying.')
         } finally {
             const elapsedTime = (Date.now() - startTime) / 1000
-            if (elapsedTime >= 3) {
+            if (elapsedTime >= 5) {
                 console.warn(
                     `🐢 Slow request warning. Fetch took ${elapsedTime} seconds. Event ID: ${eventUuid}`,
-                    endpoint,
-                    options.body
+                    endpoint
                 )
             }
         }
@@ -944,8 +943,8 @@ export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta)
     } finally {
         const elapsedTime = (Date.now() - startTime) / 1000
 
-        if (elapsedTime >= 4) {
-            console.warn(`🐢🐢 Slow exportEvents warning. Fetch took ${elapsedTime} seconds`)
+        if (elapsedTime >= 30) {
+            console.warn(`🐢🐢 Slow exportEvents warning. Export took ${elapsedTime} seconds`)
         }
     }
 }
