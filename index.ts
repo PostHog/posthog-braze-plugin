@@ -1,5 +1,6 @@
 import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
 import fetch, { RequestInit, Response } from 'node-fetch'
+import { inspect } from 'util'
 
 declare const posthog: {
     api: {
@@ -846,8 +847,8 @@ type BrazeEvent = {
 }
 
 type BrazeUsersTrackBody = {
-    attributes: BrazeAttribute[]
-    events: BrazeEvent[]
+    attributes: Array<BrazeAttribute> // NOTE: max length 75
+    events: Array<BrazeEvent> // NOTE: max length 75
 }
 
 const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): BrazeUsersTrackBody => {
@@ -894,39 +895,38 @@ const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): B
 }
 
 export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta): Promise<void> => {
-    // NOTE: batching events in 75 events per request
-    const batchSize = 75
-    const batches: PluginEvent[][] = []
+    const brazeRequestBodies = pluginEvents.map((pluginEvent) => _generateBrazeRequestBody(pluginEvent, meta))
 
-    for (let i = 0; i < pluginEvents.length; i += batchSize) {
-        batches.push(pluginEvents.slice(i, i + batchSize))
+    if (
+        brazeRequestBodies.length === 0 ||
+        brazeRequestBodies.every((body) => body.attributes.length === 0 && body.events.length === 0)
+    ) {
+        return console.log('No events to export')
     }
 
-    if (batches.length === 0) {
-        throw new Error('No events to export')
-    }
+    const batchSize = 75 // NOTE: batching events in 75 events per request
+    const batchedBodies = brazeRequestBodies.reduce((acc, curr) => {
+        const { attributes, events } = curr
+        const lastBatch = acc[acc.length - 1]
 
-    const bodies = batches.map((batch) =>
-        batch.reduce(
-            (acc, pluginEvent) => {
-                const { attributes, events } = _generateBrazeRequestBody(pluginEvent, meta)
+        if (attributes.length === 0 && events.length === 0) {
+            return acc
+        }
 
-                return {
-                    attributes: [...acc.attributes, ...attributes],
-                    events: [...acc.events, ...events],
-                }
-            },
-            {
-                attributes: [],
-                events: [],
-            } as BrazeUsersTrackBody
-        )
-    )
+        if (!lastBatch || lastBatch.attributes.length >= batchSize || lastBatch.events.length >= batchSize) {
+            acc.push({ attributes: [...attributes], events: [...events] })
+        } else {
+            lastBatch.attributes.push(...attributes)
+            lastBatch.events.push(...events)
+        }
+
+        return acc
+    }, [] as BrazeUsersTrackBody[])
 
     const startTime = Date.now()
 
     try {
-        const brazeRequests = bodies.map((body) =>
+        const brazeRequests = batchedBodies.map((body) =>
             meta.global.fetchBraze(
                 '/users/track',
                 {
@@ -936,10 +936,15 @@ export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta)
             )
         )
 
-        await Promise.all(brazeRequests)
+        const results = await Promise.all(brazeRequests)
+
+        if (!results.every((res) => res?.message === 'success')) {
+            console.error('Braze API error')
+            throw new RetryError('Braze API error exportEvents, retrying.')
+        }
     } catch (e) {
         console.error(e)
-        throw new Error('Error exporting events to Braze')
+        throw e
     } finally {
         const elapsedTime = (Date.now() - startTime) / 1000
 
