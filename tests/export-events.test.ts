@@ -131,6 +131,114 @@ test('exportEvents sends $set attributes and events to Braze', async () => {
     })
 })
 
+test('exportEvents multiple events to Braze', async () => {
+    const mockService = jest.fn()
+
+    server.use(
+        rest.post('https://rest.iad-03.braze.com/users/track', (req, res, ctx) => {
+            const requestBody = req.body
+            mockService(requestBody)
+            return res(ctx.status(200), ctx.json({ message: 'success', attributes_processed: 1 }))
+        })
+    )
+
+    // Create a meta object that we can pass into the setupPlugin and exportEvents
+    const meta = {
+        config: {
+            brazeEndpoint: 'US-03',
+            eventsToExport: 'account created,account_updated',
+            userPropertiesToExport: 'email,name',
+            importUserAttributesInAllEvents: 'Yes',
+        },
+        global: {},
+    } as BrazeMeta
+
+    await setupPlugin(meta)
+    await exportEvents(
+        [
+            {
+                event: 'account created',
+                timestamp: '2023-06-16T00:00:00.00Z',
+                properties: {
+                    $set: {
+                        email: 'test@posthog',
+                        name: 'Test User',
+                    },
+                    is_a_demo_user: true,
+                },
+                distinct_id: 'test',
+                ip: '',
+                site_url: '',
+                team_id: 0,
+                now: new Date().toISOString(),
+            },
+            {
+                event: '$identify', // not exported
+                timestamp: '2023-06-16T00:00:00.00Z',
+                properties: {
+                    $set: {
+                        email: 'test2@posthog',
+                        name: 'Test User 2',
+                    },
+                    is_a_demo_user: true,
+                },
+                distinct_id: 'test2',
+                ip: '',
+                site_url: '',
+                team_id: 0,
+                now: new Date().toISOString(),
+            },
+            {
+                event: 'account_updated',
+                timestamp: '2023-08-20T00:00:00.00Z',
+                properties: {
+                    $set: {},
+                    is_a_demo_user: true,
+                },
+                distinct_id: 'test3',
+                ip: '',
+                site_url: '',
+                team_id: 0,
+                now: new Date().toISOString(),
+            },
+        ],
+        meta
+    )
+
+    expect(mockService).toHaveBeenCalledWith({
+        attributes: [
+            {
+                email: 'test@posthog',
+                name: 'Test User',
+                external_id: 'test',
+            },
+            {
+                email: 'test2@posthog',
+                name: 'Test User 2',
+                external_id: 'test2',
+            },
+        ],
+        events: [
+            {
+                properties: {
+                    is_a_demo_user: true,
+                },
+                external_id: 'test',
+                name: 'account created',
+                time: '2023-06-16T00:00:00.00Z',
+            },
+            {
+                properties: {
+                    is_a_demo_user: true,
+                },
+                external_id: 'test3',
+                name: 'account_updated',
+                time: '2023-08-20T00:00:00.00Z',
+            },
+        ],
+    })
+})
+
 test('exportEvents user properties not sent', async () => {
     const mockService = jest.fn()
 
@@ -406,5 +514,55 @@ test('Braze offline error (500 response)', async () => {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
         expect(e.message).toMatch('Service is down, retry later. Request ID: ')
+    }
+})
+
+test('Braze offline error (network error)', async () => {
+    server.use(
+        rest.post('https://rest.iad-02.braze.com/users/track', (_, res) => {
+            return res.networkError('Failed to connect')
+        })
+    )
+
+    // Create a meta object that we can pass into the setupPlugin and exportEvents
+    const meta = {
+        config: {
+            brazeEndpoint: 'US-02',
+            eventsToExport: 'account created',
+            userPropertiesToExport: 'email',
+            importUserAttributesInAllEvents: 'Yes',
+        },
+        global: {},
+    } as BrazeMeta
+
+    await setupPlugin(meta)
+    try {
+        await exportEvents(
+            [
+                {
+                    event: '$identify',
+                    timestamp: '2023-06-16T00:00:00.00Z',
+                    properties: {
+                        $set: {
+                            email: 'test@posthog',
+                            name: 'Test User',
+                        },
+                        is_a_demo_user: true,
+                    },
+                    distinct_id: 'test',
+                    ip: '',
+                    site_url: '',
+                    team_id: 0,
+                    now: new Date().toISOString(),
+                    uuid: 'id_123',
+                },
+            ],
+            meta
+        )
+        throw new Error('Should not reach here')
+    } catch (e) {
+        expect(e instanceof RetryError).toBeTruthy()
+        // @ts-ignore
+        expect(e.message).toMatch('Fetch failed, retrying.')
     }
 })
