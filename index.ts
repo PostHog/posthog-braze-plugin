@@ -905,27 +905,14 @@ export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta)
     // NOTE: We compute a unique ID for this request so we can identify the same request in the logs
     const requestId = crypto.createHash('sha256').update(JSON.stringify(pluginEvents)).digest('hex')
     const startTime = Date.now()
-    let oldestEventTimestamp = Date.now()
 
-    const brazeRequestBodies = pluginEvents.map((pluginEvent) => {
-        if (pluginEvent.timestamp && new Date(pluginEvent.timestamp).getTime() < oldestEventTimestamp) {
-            oldestEventTimestamp = new Date(pluginEvent.timestamp).getTime()
-        }
-        return _generateBrazeRequestBody(pluginEvent, meta)
-    })
-
-    console.log(
-        `Braze plugin export, received ${pluginEvents.length} events. Exporting ${
-            brazeRequestBodies.length
-        } batches. Oldest event in this batch was received ${(Date.now() - oldestEventTimestamp) / 1000} seconds ago.`,
-        requestId
-    )
+    const brazeRequestBodies = pluginEvents.map((pluginEvent) => _generateBrazeRequestBody(pluginEvent, meta))
 
     if (
         brazeRequestBodies.length === 0 ||
         brazeRequestBodies.every((body) => body.attributes.length === 0 && body.events.length === 0)
     ) {
-        return console.log('No events to export.')
+        return console.log('No events to export.', requestId)
     }
 
     const batchSize = 75 // NOTE: https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
@@ -964,6 +951,6 @@ export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta)
     const elapsedTime = (Date.now() - startTime) / 1000
 
     if (elapsedTime >= 30) {
-        console.warn(`🐢🐢 Slow exportEvents warning. Export took ${elapsedTime} seconds.`)
+        console.warn(`🐢🐢 Slow exportEvents warning. Export took ${elapsedTime} seconds.`, requestId)
     }
 }
