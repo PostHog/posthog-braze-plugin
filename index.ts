@@ -1,4 +1,5 @@
 import { Plugin, PluginEvent, PluginMeta, Properties, RetryError } from '@posthog/plugin-scaffold'
+import crypto from 'crypto'
 import fetch, { RequestInit, Response } from 'node-fetch'
 
 declare const posthog: {
@@ -15,7 +16,8 @@ declare const posthog: {
 export type FetchBraze = (
     endpoint: string,
     options: Partial<RequestInit>,
-    method: string
+    method: string,
+    requestId?: string
 ) => Promise<Record<string, unknown> | null>
 
 type BooleanChoice = 'Yes' | 'No'
@@ -65,7 +67,7 @@ const ENDPOINTS_MAP = {
 export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> {
     const brazeUrl = ENDPOINTS_MAP[config.brazeEndpoint]
     // we define a global fetch function that handles authentication and API errors
-    global.fetchBraze = async (endpoint: string, options = {}, method = 'GET') => {
+    global.fetchBraze = async (endpoint, options = {}, method = 'GET', requestId = '') => {
         const headers = {
             Accept: 'application/json',
             'Content-Type': 'application/json',
@@ -84,27 +86,32 @@ export async function setupPlugin({ config, global }: BrazeMeta): Promise<void> 
                 timeout: 5000,
             })
         } catch (e) {
-            console.error(e)
+            console.error(e, endpoint, options.body, requestId)
             throw new RetryError('Fetch failed, retrying.')
         } finally {
             const elapsedTime = (Date.now() - startTime) / 1000
-            if (elapsedTime >= 3) {
-                console.warn(`🐢 Slow request warning. Fetch took ${elapsedTime} seconds.`, endpoint, options.body)
+            if (elapsedTime >= 5) {
+                console.warn(
+                    `🐢 Slow request warning. Fetch took ${elapsedTime} seconds. Request ID: ${requestId}`,
+                    endpoint
+                )
             }
         }
 
         if (String(response.status)[0] === '5') {
-            throw new RetryError('Service is down, retry later')
+            throw new RetryError(`Service is down, retry later. Request ID: ${requestId}`)
         }
 
-        if (String(response.status)[0] !== '2') {
-            return null
+        let responseJson: Record<string, unknown> | null = null
+
+        try {
+            responseJson = await response.json()
+        } catch (e) {
+            console.error('Error parsing Braze response as JSON: ', e, endpoint, options.body, requestId)
         }
 
-        const responseJson = await response.json()
-        if (responseJson['errors']) {
-            const errors = responseJson['errors'] as string[]
-            errors.forEach((error) => console.error(error))
+        if (responseJson?.['errors']) {
+            console.error('Braze API error (not retried): ', responseJson, endpoint, options.body, requestId)
         }
         return responseJson
     }
@@ -841,7 +848,12 @@ type BrazeEvent = {
     _update_existing_only?: boolean
 }
 
-const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+type BrazeUsersTrackBody = {
+    attributes: Array<BrazeAttribute> // NOTE: max length 75
+    events: Array<BrazeEvent> // NOTE: max length 75
+}
+
+const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): BrazeUsersTrackBody => {
     const { event, $set, properties, timestamp } = pluginEvent
 
     // If we have $set or properties.$set then attributes should be an array
@@ -878,50 +890,80 @@ const _handleOnEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promis
           ]
         : []
 
-    if (attributes.length || events.length) {
-        const response = await meta.global.fetchBraze(
-            '/users/track',
-            {
-                body: JSON.stringify({
-                    attributes,
-                    events,
-                }),
-            },
-            'POST'
-        )
-
-        if (response?.message !== 'success') {
-            console.error(`Braze API error response: `, response)
-            throw new RetryError('Braze API error onEvent, retrying.')
-        }
+    return {
+        attributes,
+        events,
     }
 }
 
-export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
-    // This App supports pushing events to Braze also, via the `onEvent` hook. It
-    // should send any $set attributes to Braze `/users/track` endpoint in the
-    // `attributes` param as well as events in the `events` property.
-    // To enable this functionality, the user must configure the plugin with the
-    // config.eventsToExport and config.userPropertiesToExport config options.
-    // exportEvents is a comma separated list of event names to export to Braze.
-    //
-    // See https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
-    // for more info.
-
-    if (!meta.config.eventsToExport && !meta.config.userPropertiesToExport) {
+export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta): Promise<void> => {
+    if (!pluginEvents.length) {
+        console.warn('Received `exportEvents` with no events.')
         return
     }
 
+    // NOTE: We compute a unique ID for this request so we can identify the same request in the logs
+    const requestId = crypto.createHash('sha256').update(JSON.stringify(pluginEvents)).digest('hex')
     const startTime = Date.now()
+    let oldestEventTimestamp = Date.now()
 
-    try {
-        await _handleOnEvent(pluginEvent, meta)
-    } catch (e) {
-        throw e
-    } finally {
-        const elapsedTime = (Date.now() - startTime) / 1000
-        if (elapsedTime >= 4) {
-            console.warn(`🐢🐢 Slow onEvent warning. Fetch took ${elapsedTime} seconds.`)
+    const brazeRequestBodies = pluginEvents.map((pluginEvent) => {
+        if (pluginEvent.timestamp && new Date(pluginEvent.timestamp).getTime() < oldestEventTimestamp) {
+            oldestEventTimestamp = new Date(pluginEvent.timestamp).getTime()
         }
+        return _generateBrazeRequestBody(pluginEvent, meta)
+    })
+
+    console.log(
+        `Braze plugin export, received ${pluginEvents.length} events. Exporting ${
+            brazeRequestBodies.length
+        } batches. Oldest event in this batch was received ${(Date.now() - oldestEventTimestamp) / 1000} seconds ago.`,
+        requestId
+    )
+
+    if (
+        brazeRequestBodies.length === 0 ||
+        brazeRequestBodies.every((body) => body.attributes.length === 0 && body.events.length === 0)
+    ) {
+        return console.log('No events to export.')
+    }
+
+    const batchSize = 75 // NOTE: https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
+    const batchedBodies = brazeRequestBodies.reduce((acc, curr) => {
+        const { attributes, events } = curr
+        const lastBatch = acc[acc.length - 1]
+
+        if (attributes.length === 0 && events.length === 0) {
+            return acc
+        }
+
+        if (!lastBatch || lastBatch.attributes.length >= batchSize || lastBatch.events.length >= batchSize) {
+            acc.push({ attributes: [...attributes], events: [...events] })
+        } else {
+            lastBatch.attributes.push(...attributes)
+            lastBatch.events.push(...events)
+        }
+
+        return acc
+    }, [] as BrazeUsersTrackBody[])
+
+    const brazeRequests = batchedBodies.map((body, idx) =>
+        meta.global.fetchBraze(
+            '/users/track',
+            {
+                body: JSON.stringify(body),
+            },
+            'POST',
+            `${requestId}-${idx}`
+        )
+    )
+
+    // NOTE: Send all requests in parallel, error responses already handled and logged by fetchBraze
+    await Promise.all(brazeRequests)
+
+    const elapsedTime = (Date.now() - startTime) / 1000
+
+    if (elapsedTime >= 30) {
+        console.warn(`🐢🐢 Slow exportEvents warning. Export took ${elapsedTime} seconds.`)
     }
 }
