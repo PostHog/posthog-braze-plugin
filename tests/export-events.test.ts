@@ -58,7 +58,10 @@ import { BrazeMeta, exportEvents, setupPlugin } from '../index'
 
 const server = setupServer()
 
-beforeAll(() => server.listen())
+beforeAll(() => {
+    console.error = jest.fn() // catch console errors
+    server.listen()
+})
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
@@ -291,25 +294,25 @@ test('exportEvents user properties are not passed for non-whitelisted events', a
     expect(mockService).not.toHaveBeenCalled()
 })
 
-test('Braze API error', async () => {
+test('Braze API error (e.g. 400) are not retried', async () => {
+    // NOTE: We only retry intermittent errors (e.g. 5xx), 4xx errors are most likely going to continue failing if retried
     const mockService = jest.fn()
+
+    const errorResponse = {
+        errors: [
+            {
+                type: "'external_id' or 'braze_id' or 'user_alias' is required",
+                input_array: 'attributes',
+                index: 0,
+            },
+        ],
+    }
 
     server.use(
         rest.post('https://rest.iad-02.braze.com/users/track', (req, res, ctx) => {
             const requestBody = req.body
             mockService(requestBody)
-            return res(
-                ctx.status(400),
-                ctx.json({
-                    errors: [
-                        {
-                            type: "'external_id' or 'braze_id' or 'user_alias' is required",
-                            input_array: 'attributes',
-                            index: 0,
-                        },
-                    ],
-                })
-            )
+            return res(ctx.status(400), ctx.json(errorResponse))
         })
     )
 
@@ -325,35 +328,35 @@ test('Braze API error', async () => {
     } as BrazeMeta
 
     await setupPlugin(meta)
-    try {
-        await exportEvents(
-            [
-                {
-                    event: '$identify',
-                    timestamp: '2023-06-16T00:00:00.00Z',
-                    properties: {
-                        $set: {
-                            email: 'test@posthog',
-                            name: 'Test User',
-                        },
-                        is_a_demo_user: true,
+    await exportEvents(
+        [
+            {
+                event: '$identify',
+                timestamp: '2023-06-16T00:00:00.00Z',
+                properties: {
+                    $set: {
+                        email: 'test@posthog',
+                        name: 'Test User',
                     },
-                    distinct_id: 'test',
-                    ip: '',
-                    site_url: '',
-                    team_id: 0,
-                    now: new Date().toISOString(),
-                    uuid: 'event_123',
+                    is_a_demo_user: true,
                 },
-            ],
-            meta
-        )
-        throw new Error('Should not reach here')
-    } catch (e) {
-        expect(e instanceof RetryError).toBeTruthy()
-        // @ts-ignore
-        expect(e.message).toEqual('Braze API error exportEvents, retrying.')
-    }
+                distinct_id: 'test',
+                ip: '',
+                site_url: '',
+                team_id: 0,
+                now: new Date().toISOString(),
+                uuid: 'event_123',
+            },
+        ],
+        meta
+    )
+    expect(console.error).toHaveBeenCalledWith(
+        'Braze API error (not retried): ',
+        errorResponse,
+        '/users/track',
+        expect.anything(),
+        expect.any(String)
+    )
 })
 
 test('Braze offline error (500 response)', async () => {
@@ -402,6 +405,6 @@ test('Braze offline error (500 response)', async () => {
     } catch (e) {
         expect(e instanceof RetryError).toBeTruthy()
         // @ts-ignore
-        expect(e.message).toEqual('Service is down, retry later. Event ID: ')
+        expect(e.message).toMatch('Service is down, retry later. Request ID: ')
     }
 })
