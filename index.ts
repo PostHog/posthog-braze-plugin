@@ -197,74 +197,27 @@ const _generateBrazeRequestBody = (pluginEvent: PluginEvent, meta: BrazeMeta): B
     }
 }
 
-export const exportEvents = async (pluginEvents: PluginEvent[], meta: BrazeMeta): Promise<void> => {
-    if (!pluginEvents.length) {
-        console.warn('Received `exportEvents` with no events.')
+export const onEvent = async (pluginEvent: PluginEvent, meta: BrazeMeta): Promise<void> => {
+    // NOTE: We compute a unique ID for this request so we can identify the same request in the logs
+    const requestId = crypto.createHash('sha256').update(JSON.stringify(pluginEvent)).digest('hex')
+    const startTime = Date.now()
+
+    const brazeRequestBody = _generateBrazeRequestBody(pluginEvent, meta)
+    if (brazeRequestBody.attributes.length === 0 && brazeRequestBody.events.length === 0) {
         return
     }
 
-    // NOTE: We compute a unique ID for this request so we can identify the same request in the logs
-    const requestId = crypto.createHash('sha256').update(JSON.stringify(pluginEvents)).digest('hex')
-    const startTime = Date.now()
-    let oldestEventTimestamp = Date.now()
-
-    const brazeRequestBodies = pluginEvents.map((pluginEvent) => {
-        if (pluginEvent.timestamp && new Date(pluginEvent.timestamp).getTime() < oldestEventTimestamp) {
-            oldestEventTimestamp = new Date(pluginEvent.timestamp).getTime()
-        }
-        return _generateBrazeRequestBody(pluginEvent, meta)
-    })
-
-    console.log(
-        `Braze plugin export, received ${pluginEvents.length} events. Exporting ${
-            brazeRequestBodies.length
-        } batches. Oldest event in this batch was received ${(Date.now() - oldestEventTimestamp) / 1000} seconds ago.`,
-        requestId
-    )
-
-    if (
-        brazeRequestBodies.length === 0 ||
-        brazeRequestBodies.every((body) => body.attributes.length === 0 && body.events.length === 0)
-    ) {
-        return console.log('No events to export.')
-    }
-
-    const batchSize = 75 // NOTE: https://www.braze.com/docs/api/endpoints/user_data/post_user_track/
-    const batchedBodies = brazeRequestBodies.reduce((acc, curr) => {
-        const { attributes, events } = curr
-        const lastBatch = acc[acc.length - 1]
-
-        if (attributes.length === 0 && events.length === 0) {
-            return acc
-        }
-
-        if (!lastBatch || lastBatch.attributes.length >= batchSize || lastBatch.events.length >= batchSize) {
-            acc.push({ attributes: [...attributes], events: [...events] })
-        } else {
-            lastBatch.attributes.push(...attributes)
-            lastBatch.events.push(...events)
-        }
-
-        return acc
-    }, [] as BrazeUsersTrackBody[])
-
-    const brazeRequests = batchedBodies.map((body, idx) =>
-        meta.global.fetchBraze(
+    await meta.global.fetchBraze(
             '/users/track',
             {
-                body: JSON.stringify(body),
+                body: JSON.stringify(brazeRequestBody),
             },
             'POST',
-            `${requestId}-${idx}`
+            `${requestId}`
         )
-    )
-
-    // NOTE: Send all requests in parallel, error responses already handled and logged by fetchBraze
-    await Promise.all(brazeRequests)
 
     const elapsedTime = (Date.now() - startTime) / 1000
-
     if (elapsedTime >= 30) {
-        console.warn(`🐢🐢 Slow exportEvents warning. Export took ${elapsedTime} seconds.`)
+        console.warn(`🐢🐢 Slow onEvent warning. Export took ${elapsedTime} seconds.`)
     }
 }
